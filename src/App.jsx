@@ -322,7 +322,7 @@ function PortfolioDashboard({ session }) {
                       {change24h.toFixed(2)}%
                     </td>
                     <td style={{ padding: '12px 8px', color: itemPnl >= 0 ? '#10B981' : '#EF4444' }}>
-                      ${itemPnl.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      ${itemPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td style={{ padding: '12px 8px' }}>
                       <button onClick={() => handleDeleteAsset(item.id)} style={{ background: '#EF4444', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>
