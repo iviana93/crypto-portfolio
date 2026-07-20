@@ -54,20 +54,20 @@ function AuthScreen() {
     <div style={{ maxWidth: '400px', margin: '80px auto', background: '#1e293b', border: '1px solid #334155', padding: '32px', borderRadius: '16px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)' }}>
       <h2 style={{ marginTop: 0, color: '#f8fafc', fontSize: '22px' }}>{isSignUp ? 'Criar Conta' : 'Entrar no Crypto Tracker'}</h2>
       <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <input 
-          type="email" 
-          placeholder="Seu e-mail" 
-          value={email} 
+        <input
+          type="email"
+          placeholder="Seu e-mail"
+          value={email}
           onChange={(e) => setEmail(e.target.value)}
-          required 
+          required
           style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px' }}
         />
-        <input 
-          type="password" 
-          placeholder="Sua senha" 
-          value={password} 
+        <input
+          type="password"
+          placeholder="Sua senha"
+          value={password}
           onChange={(e) => setPassword(e.target.value)}
-          required 
+          required
           style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px' }}
         />
         <button type="submit" style={{ padding: '12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}>
@@ -165,18 +165,18 @@ function PortfolioDashboard({ session }) {
     e.preventDefault();
     if (!selectedCoin || !amount || !buyPrice) return;
 
-    const parsedAmount = parseFloat(amount);
-    const parsedTotalOrPrice = parseFloat(buyPrice);
-    
-    // Se o preço pago for maior que 200, assume que o usuário digitou o valor total investido e calcula o preço unitário
-    const unitPrice = parsedTotalOrPrice > 200 ? parsedTotalOrPrice / parsedAmount : parsedTotalOrPrice;
+    const parsedAmount = parseFloat(amount); // Quantidade de moedas (ex: 0.000737)
+    const parsedTotalSpent = parseFloat(buyPrice); // Total gasto em USD (ex: 48.96)
+
+    // O app calcula a média por unidade sozinho!
+    const calculatedUnitPrice = parsedTotalSpent / parsedAmount;
 
     const { error } = await supabase.from('portfolio').insert([{
       coin_id: selectedCoin.id,
       coin_name: selectedCoin.name,
       coin_symbol: selectedCoin.symbol,
       amount: parsedAmount,
-      buy_price: unitPrice
+      buy_price: calculatedUnitPrice // Salva o preço por unidade correto no banco
     }]);
 
     if (!error) {
@@ -214,15 +214,15 @@ function PortfolioDashboard({ session }) {
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-      
+
       {/* Header */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '26px', color: '#f8fafc', fontWeight: '800' }}>Crypto Portfolio 🚀</h1>
           <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '14px' }}>Acompanhamento em tempo real</p>
         </div>
-        <button 
-          onClick={() => supabase.auth.signOut()} 
+        <button
+          onClick={() => supabase.auth.signOut()}
           style={{ padding: '10px 18px', borderRadius: '8px', border: '1px solid #334155', background: '#1e293b', color: '#f8fafc', cursor: 'pointer', fontWeight: '600' }}
         >
           Sair
@@ -231,7 +231,7 @@ function PortfolioDashboard({ session }) {
 
       {/* Grid Superior: Cards de Resumo + Gráfico */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-        
+
         {/* Cards de Métricas */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px', flex: 1 }}>
@@ -272,7 +272,7 @@ function PortfolioDashboard({ session }) {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip 
+                  <Tooltip
                     formatter={(value) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                     contentStyle={{ background: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
                   />
@@ -291,11 +291,11 @@ function PortfolioDashboard({ session }) {
       <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px', marginBottom: '24px' }}>
         <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#f8fafc' }}>➕ Adicionar Transação</h3>
         <form onSubmit={handleAddAsset} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', alignItems: 'center' }}>
-          
+
           {/* Autocomplete */}
           <div style={{ position: 'relative' }}>
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Moeda (ex: Bitcoin, SOL...)"
               value={selectedCoin ? `${selectedCoin.name} (${selectedCoin.symbol.toUpperCase()})` : searchQuery}
               onChange={(e) => {
@@ -309,8 +309,8 @@ function PortfolioDashboard({ session }) {
             {searchResults.length > 0 && !selectedCoin && (
               <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', margin: '4px 0 0 0', padding: 0, listStyle: 'none', zIndex: 100, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}>
                 {searchResults.map((coin) => (
-                  <li 
-                    key={coin.id} 
+                  <li
+                    key={coin.id}
                     onClick={() => {
                       setSelectedCoin(coin);
                       setSearchResults([]);
@@ -325,23 +325,23 @@ function PortfolioDashboard({ session }) {
             )}
           </div>
 
-          <input 
-            type="number" 
-            step="any" 
-            placeholder="Quantidade" 
-            value={amount} 
-            onChange={e => setAmount(e.target.value)} 
-            required 
+          <input
+            type="number"
+            step="any"
+            placeholder="Total Investido em USD (ex: 48.96)"
+            value={buyPrice}
+            onChange={e => setBuyPrice(e.target.value)}
+            required
             style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px' }}
           />
 
-          <input 
-            type="number" 
-            step="any" 
-            placeholder="Preço Pago Unitário (USD)" 
-            value={buyPrice} 
-            onChange={e => setBuyPrice(e.target.value)} 
-            required 
+          <input
+            type="number"
+            step="any"
+            placeholder="Preço Pago Unitário (USD)"
+            value={buyPrice}
+            onChange={e => setBuyPrice(e.target.value)}
+            required
             style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px' }}
           />
 
@@ -354,7 +354,7 @@ function PortfolioDashboard({ session }) {
       {/* Tabela de Ativos */}
       <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px', overflowX: 'auto' }}>
         <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#f8fafc' }}>💼 Meus Ativos</h3>
-        
+
         {fetchingPrices && portfolio.length > 0 ? (
           <p style={{ color: '#94a3b8' }}>Atualizando cotações...</p>
         ) : portfolio.length === 0 ? (
@@ -393,8 +393,8 @@ function PortfolioDashboard({ session }) {
                       {itemPnl >= 0 ? '+' : ''}${itemPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td style={{ padding: '16px 8px', textAlign: 'right' }}>
-                      <button 
-                        onClick={() => handleDeleteAsset(item.id)} 
+                      <button
+                        onClick={() => handleDeleteAsset(item.id)}
                         style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
                       >
                         Excluir
