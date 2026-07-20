@@ -51,20 +51,20 @@ function AuthScreen() {
     <div style={{ maxWidth: '400px', margin: '80px auto', background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
       <h2 style={{ marginTop: 0 }}>{isSignUp ? 'Criar Conta' : 'Entrar no Crypto Tracker'}</h2>
       <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <input 
-          type="email" 
-          placeholder="Seu e-mail" 
-          value={email} 
+        <input
+          type="email"
+          placeholder="Seu e-mail"
+          value={email}
           onChange={(e) => setEmail(e.target.value)}
-          required 
+          required
           style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
         />
-        <input 
-          type="password" 
-          placeholder="Sua senha" 
-          value={password} 
+        <input
+          type="password"
+          placeholder="Sua senha"
+          value={password}
           onChange={(e) => setPassword(e.target.value)}
-          required 
+          required
           style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
         />
         <button type="submit" style={{ padding: '10px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
@@ -170,7 +170,7 @@ function PortfolioDashboard({ session }) {
       coin_name: selectedCoin.name,
       coin_symbol: selectedCoin.symbol,
       amount: parseFloat(amount),
-      buy_price: parseFloat(buyPrice)
+      buy_price: parseFloat(buyPrice) / parseFloat(amount)
     }]);
 
     if (!error) {
@@ -225,11 +225,11 @@ function PortfolioDashboard({ session }) {
       <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
         <h3 style={{ marginTop: 0, marginBottom: '16px' }}>Adicionar Compra</h3>
         <form onSubmit={handleAddAsset} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          
+
           {/* Autocomplete de Moedas */}
           <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Buscar moeda (ex: Bitcoin, SOL, Pepe...)"
               value={selectedCoin ? `${selectedCoin.name} (${selectedCoin.symbol.toUpperCase()})` : searchQuery}
               onChange={(e) => {
@@ -244,8 +244,8 @@ function PortfolioDashboard({ session }) {
             {searchResults.length > 0 && !selectedCoin && (
               <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #ccc', borderRadius: '6px', margin: 0, padding: 0, listStyle: 'none', zIndex: 10, boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
                 {searchResults.map((coin) => (
-                  <li 
-                    key={coin.id} 
+                  <li
+                    key={coin.id}
                     onClick={() => {
                       setSelectedCoin(coin);
                       setSearchResults([]);
@@ -261,23 +261,23 @@ function PortfolioDashboard({ session }) {
             {isSearching && <small style={{ position: 'absolute', right: '10px', top: '12px', color: '#64748b' }}>Procurando...</small>}
           </div>
 
-          <input 
-            type="number" 
-            step="any" 
-            placeholder="Quantidade" 
-            value={amount} 
-            onChange={e => setAmount(e.target.value)} 
-            required 
+          <input
+            type="number"
+            step="any"
+            placeholder="Quantidade"
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            required
             style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '120px' }}
           />
 
-          <input 
-            type="number" 
-            step="any" 
-            placeholder="Preço Pago (USD)" 
-            value={buyPrice} 
-            onChange={e => setBuyPrice(e.target.value)} 
-            required 
+          <input
+            type="number"
+            step="any"
+            placeholder="Preço Pago (USD)"
+            value={buyPrice}
+            onChange={e => setBuyPrice(e.target.value)}
+            required
             style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '140px' }}
           />
 
