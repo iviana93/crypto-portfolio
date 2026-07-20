@@ -54,20 +54,20 @@ function AuthScreen() {
     <div style={{ width: '100%', maxWidth: '400px', margin: '40px 16px', background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)', boxSizing: 'border-box' }}>
       <h2 style={{ marginTop: 0, color: '#f8fafc', fontSize: '20px' }}>{isSignUp ? 'Criar Conta' : 'Entrar no Crypto Tracker'}</h2>
       <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <input 
-          type="email" 
-          placeholder="Seu e-mail" 
-          value={email} 
+        <input
+          type="email"
+          placeholder="Seu e-mail"
+          value={email}
           onChange={(e) => setEmail(e.target.value)}
-          required 
+          required
           style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }}
         />
-        <input 
-          type="password" 
-          placeholder="Sua senha" 
-          value={password} 
+        <input
+          type="password"
+          placeholder="Sua senha"
+          value={password}
           onChange={(e) => setPassword(e.target.value)}
-          required 
+          required
           style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }}
         />
         <button type="submit" style={{ padding: '12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}>
@@ -94,7 +94,7 @@ function MainDashboard({ session }) {
 
   return (
     <div style={{ width: '100%', maxWidth: '850px', padding: '20px 16px 40px 16px', boxSizing: 'border-box' }}>
-      
+
       {/* Header */}
       <header style={{ width: '100%', marginBottom: '16px', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -102,8 +102,8 @@ function MainDashboard({ session }) {
             Crypto Tracker 🚀
           </h1>
 
-          <button 
-            onClick={() => supabase.auth.signOut()} 
+          <button
+            onClick={() => supabase.auth.signOut()}
             style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #334155', background: '#1e293b', color: '#94a3b8', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}
           >
             Sair
@@ -147,13 +147,13 @@ function MainDashboard({ session }) {
 
           {/* Seletor de Moeda */}
           <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '2px', display: 'flex', gap: '2px' }}>
-            <button 
+            <button
               onClick={() => setCurrency('BRL')}
               style={{ padding: '6px 10px', borderRadius: '6px', border: 'none', background: currency === 'BRL' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '11px' }}
             >
               🇧🇷 BRL
             </button>
-            <button 
+            <button
               onClick={() => setCurrency('USD')}
               style={{ padding: '6px 10px', borderRadius: '6px', border: 'none', background: currency === 'USD' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '11px' }}
             >
@@ -373,14 +373,14 @@ function PortfolioTab({ session, currency }) {
               <AreaChart data={timeSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="pnlColor" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0}/>
+                    <stop offset="5%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.4} />
+                    <stop offset="95%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                 <XAxis dataKey="date" stroke="#94a3b8" fontSize={11} />
                 <YAxis stroke="#94a3b8" fontSize={11} domain={['auto', 'auto']} />
-                <Tooltip 
+                <Tooltip
                   formatter={(val) => `${currencySymbol} ${val}`}
                   contentStyle={{ background: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
                 />
@@ -411,7 +411,7 @@ function PortfolioTab({ session, currency }) {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip 
+                  <Tooltip
                     formatter={(value) => `${currencySymbol} ${value.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                     contentStyle={{ background: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
                   />
@@ -426,19 +426,19 @@ function PortfolioTab({ session, currency }) {
       </div>
 
       {/* 🤖 COMPONENTE DE INSIGHTS DA IA */}
-      <AIInsightsCard 
-        portfolio={portfolio} 
-        prices={prices} 
-        currency={currency} 
+      <AIInsightsCard
+        portfolio={portfolio}
+        prices={prices}
+        currency={currency}
       />
 
       {/* Formulário de Registro */}
       <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
         <h3 style={{ margin: '0 0 14px 0', fontSize: '15px', color: '#f8fafc' }}>➕ Registrar Nova Compra / Venda</h3>
         <form onSubmit={handleAddAsset} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
-          
-          <select 
-            value={txType} 
+
+          <select
+            value={txType}
             onChange={e => setTxType(e.target.value)}
             style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: txType === 'buy' ? '#10b981' : '#ef4444', fontWeight: 'bold', fontSize: '13px' }}
           >
@@ -447,8 +447,8 @@ function PortfolioTab({ session, currency }) {
           </select>
 
           <div style={{ position: 'relative' }}>
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Buscar moeda..."
               value={selectedCoin ? `${selectedCoin.name} (${selectedCoin.symbol.toUpperCase()})` : searchQuery}
               onChange={(e) => {
@@ -462,8 +462,8 @@ function PortfolioTab({ session, currency }) {
             {searchResults.length > 0 && !selectedCoin && (
               <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', margin: '4px 0 0 0', padding: 0, listStyle: 'none', zIndex: 100, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}>
                 {searchResults.map((coin) => (
-                  <li 
-                    key={coin.id} 
+                  <li
+                    key={coin.id}
                     onClick={() => {
                       setSelectedCoin(coin);
                       setSearchResults([]);
@@ -478,31 +478,31 @@ function PortfolioTab({ session, currency }) {
             )}
           </div>
 
-          <input 
-            type="number" 
-            step="any" 
-            placeholder="Qtd Comprada" 
-            value={amount} 
-            onChange={(e) => setAmount(e.target.value)} 
-            required 
+          <input
+            type="number"
+            step="any"
+            placeholder="Qtd Comprada"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            required
             style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
           />
 
-          <input 
-            type="number" 
-            step="any" 
-            placeholder={`Total Pago (${currency})`} 
-            value={totalSpent} 
-            onChange={(e) => setTotalSpent(e.target.value)} 
-            required 
+          <input
+            type="number"
+            step="any"
+            placeholder={`Total Pago (${currency})`}
+            value={totalSpent}
+            onChange={(e) => setTotalSpent(e.target.value)}
+            required
             style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
           />
 
-          <input 
-            type="date" 
-            value={txDate} 
-            onChange={(e) => setTxDate(e.target.value)} 
-            required 
+          <input
+            type="date"
+            value={txDate}
+            onChange={(e) => setTxDate(e.target.value)}
+            required
             style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
           />
 
@@ -566,7 +566,7 @@ function PortfolioTab({ session, currency }) {
       {/* TABELA DETALHADA: MEUS ATIVOS */}
       <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', width: '100%', boxSizing: 'border-box' }}>
         <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#f8fafc' }}>💼 Minhas Compras & Histórico ({currency})</h3>
-        
+
         {fetchingPrices && portfolio.length > 0 ? (
           <p style={{ color: '#94a3b8', fontSize: '12px' }}>Carregando cotações em tempo real...</p>
         ) : portfolio.length === 0 ? (
@@ -598,8 +598,8 @@ function PortfolioTab({ session, currency }) {
                   const itemPnl = totalCurrentValue - totalPaid;
                   const itemPnlPct = buyUnitPrice > 0 ? ((currentUnitPrice - buyUnitPrice) / buyUnitPrice) * 100 : 0;
 
-                  const purchaseDate = item.history && item.history[0]?.date 
-                    ? item.history[0].date.split('-').reverse().join('/') 
+                  const purchaseDate = item.history && item.history[0]?.date
+                    ? item.history[0].date.split('-').reverse().join('/')
                     : 'N/A';
 
                   return (
@@ -607,7 +607,7 @@ function PortfolioTab({ session, currency }) {
                       <td style={{ padding: '10px 8px', fontWeight: '600' }}>
                         {item.coin_name} <span style={{ color: '#64748b', fontSize: '10px' }}>({item.coin_symbol.toUpperCase()})</span>
                       </td>
-                      
+
                       <td style={{ padding: '10px 8px', color: '#94a3b8', fontSize: '11px' }}>
                         📅 {purchaseDate}
                       </td>
@@ -640,8 +640,8 @@ function PortfolioTab({ session, currency }) {
                       </td>
 
                       <td style={{ padding: '10px 8px', textAlign: 'right' }}>
-                        <button 
-                          onClick={() => handleDeleteAsset(item.id)} 
+                        <button
+                          onClick={() => handleDeleteAsset(item.id)}
                           style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
                         >
                           Excluir
@@ -710,7 +710,8 @@ function AIInsightsCard({ portfolio, prices, currency }) {
     `;
 
     try {
-      const apiKey = process.env.REACT_APP_GEMINI_API_KEY || 'SUA_GEMINI_API_KEY_AQUI';
+      // ✅ Como deve ficar no Vite
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -741,7 +742,7 @@ function AIInsightsCard({ portfolio, prices, currency }) {
 
   return (
     <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
-      
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
         <div>
           <h3 style={{ margin: '0 0 4px 0', fontSize: '15px', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -780,7 +781,7 @@ function AIInsightsCard({ portfolio, prices, currency }) {
       {insight && (
         <div style={{ marginTop: '14px', padding: '14px', background: '#0f172a', borderRadius: '12px', border: '1px solid #334155', color: '#cbd5e1', fontSize: '13px', lineHeight: '1.6', whiteSpace: 'pre-line' }}>
           {insight}
-          
+
           <span style={{ display: 'block', marginTop: '12px', fontSize: '10px', color: '#64748b', fontStyle: 'italic' }}>
             ⚠️ Os insights são gerados por Inteligência Artificial e têm caráter estritamente informativo, não constituindo recomendação de investimento.
           </span>
@@ -891,17 +892,17 @@ function MarketTab({ session, currency }) {
                 const isFav = favorites.includes(coin.id);
 
                 return (
-                  <tr 
-                    key={coin.id} 
-                    style={{ 
-                      borderBottom: '1px solid #334155', 
-                      color: '#f8fafc', 
+                  <tr
+                    key={coin.id}
+                    style={{
+                      borderBottom: '1px solid #334155',
+                      color: '#f8fafc',
                       fontSize: '12px',
-                      background: isFav ? 'rgba(59, 130, 246, 0.05)' : 'transparent' 
+                      background: isFav ? 'rgba(59, 130, 246, 0.05)' : 'transparent'
                     }}
                   >
                     <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                      <button 
+                      <button
                         onClick={() => toggleFavorite(coin.id)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: 0 }}
                       >
