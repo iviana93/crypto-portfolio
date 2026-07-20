@@ -24,7 +24,7 @@ export default function App() {
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: '#f8fafc', backgroundColor: '#0f172a', minHeight: '100vh' }}>Carregando dashboard...</div>;
 
   return (
-    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh', padding: '16px', boxSizing: 'border-box' }}>
+    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh', padding: '16px 16px 40px 16px', boxSizing: 'border-box' }}>
       {!session ? <AuthScreen /> : <PortfolioDashboard session={session} />}
     </div>
   );
@@ -104,7 +104,7 @@ function PortfolioDashboard({ session }) {
   // Inputs
   const [amount, setAmount] = useState('');
   const [totalSpent, setTotalSpent] = useState('');
-  const [txType, setTxType] = useState('buy'); // 'buy' ou 'sell'
+  const [txType, setTxType] = useState('buy');
   const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Calendário
@@ -174,7 +174,8 @@ function PortfolioDashboard({ session }) {
 
   const formatCurrency = (valInUSD) => {
     const value = currency === 'BRL' ? valInUSD * usdToBrlRate : valInUSD;
-    return `${currencySymbol} ${value.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const formatted = Math.abs(value).toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return value < 0 ? `-${currencySymbol} ${formatted}` : `${currencySymbol} ${formatted}`;
   };
 
   // Lógica de Compra / Venda
@@ -288,7 +289,7 @@ function PortfolioDashboard({ session }) {
     };
   });
 
-  // Mapeamento de Transações no Calendário
+  // Transações Calendário
   const allTransactions = [];
   portfolio.forEach((asset) => {
     if (asset.history && Array.isArray(asset.history)) {
@@ -305,54 +306,57 @@ function PortfolioDashboard({ session }) {
   const transactionDates = [...new Set(allTransactions.map(t => t.date))];
 
   return (
-    <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '900px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
       
-      {/* Header com Responsividade Mobile */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '22px', color: '#f8fafc', fontWeight: '800' }}>Crypto Portfolio 🚀</h1>
-          <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>Acompanhamento em tempo real</p>
+      {/* Header Corrigido para Mobile */}
+      <header style={{ marginBottom: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <h1 style={{ margin: 0, fontSize: '22px', color: '#f8fafc', fontWeight: '800' }}>
+            Crypto Portfolio 🚀
+          </h1>
+
+          <button 
+            onClick={() => supabase.auth.signOut()} 
+            style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #334155', background: '#1e293b', color: '#94a3b8', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}
+          >
+            Sair
+          </button>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', maxWidth: '300px', justifyContent: 'flex-end' }}>
-          <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '2px', display: 'flex', gap: '2px', width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>Acompanhamento em tempo real</p>
+
+          <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '2px', display: 'flex', gap: '2px' }}>
             <button 
               onClick={() => setCurrency('BRL')}
-              style={{ flex: 1, padding: '8px', borderRadius: '6px', border: 'none', background: currency === 'BRL' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}
+              style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: currency === 'BRL' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}
             >
               🇧🇷 BRL
             </button>
             <button 
               onClick={() => setCurrency('USD')}
-              style={{ flex: 1, padding: '8px', borderRadius: '6px', border: 'none', background: currency === 'USD' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}
+              style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: currency === 'USD' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}
             >
               🇺🇸 USD
             </button>
           </div>
-
-          <button 
-            onClick={() => supabase.auth.signOut()} 
-            style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #334155', background: '#1e293b', color: '#f8fafc', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}
-          >
-            Sair
-          </button>
         </div>
       </header>
 
-      {/* Cards de Resumo */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '16px' }}>
-          <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500' }}>Patrimônio Total</span>
-          <h2 style={{ margin: '6px 0 0 0', fontSize: '26px', color: '#f8fafc', fontWeight: '800' }}>
+      {/* Cards de Resumo Lado a Lado no Mobile */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px', borderRadius: '14px' }}>
+          <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Patrimônio</span>
+          <h2 style={{ margin: '4px 0 0 0', fontSize: '18px', color: '#f8fafc', fontWeight: '800' }}>
             {formatCurrency(currentValueUSD)}
           </h2>
         </div>
 
-        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '16px' }}>
-          <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500' }}>Lucro / Prejuízo (P/L)</span>
-          <h2 style={{ margin: '6px 0 0 0', fontSize: '26px', color: totalPnlUSD >= 0 ? '#10b981' : '#ef4444', fontWeight: '800' }}>
-            {totalPnlUSD >= 0 ? '+' : ''}{formatCurrency(totalPnlUSD)}
-            <span style={{ fontSize: '16px', marginLeft: '6px', fontWeight: '600' }}>
+        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px', borderRadius: '14px' }}>
+          <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Lucro / Prejuízo</span>
+          <h2 style={{ margin: '4px 0 0 0', fontSize: '17px', color: totalPnlUSD >= 0 ? '#10b981' : '#ef4444', fontWeight: '800' }}>
+            {formatCurrency(totalPnlUSD)}
+            <span style={{ fontSize: '11px', display: 'block', fontWeight: '600', marginTop: '2px' }}>
               ({totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
             </span>
           </h2>
@@ -367,7 +371,7 @@ function PortfolioDashboard({ session }) {
           </span>
           <div style={{ width: '100%', height: '180px' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={timeSeriesData}>
+              <AreaChart data={timeSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="pnlColor" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor={totalPnlUSD >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.4}/>
@@ -387,8 +391,8 @@ function PortfolioDashboard({ session }) {
           </div>
         </div>
 
-        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500', marginBottom: '8px' }}>
+        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px' }}>
+          <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500', display: 'block', marginBottom: '8px' }}>
             Alocação ({currency})
           </span>
           {portfolio.length > 0 ? (
@@ -399,8 +403,8 @@ function PortfolioDashboard({ session }) {
                     data={pieChartData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={40}
-                    outerRadius={65}
+                    innerRadius={35}
+                    outerRadius={60}
                     paddingAngle={4}
                     dataKey="value"
                   >
@@ -412,25 +416,25 @@ function PortfolioDashboard({ session }) {
                     formatter={(value) => `${currencySymbol} ${value.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                     contentStyle={{ background: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
                   />
-                  <Legend wrapperStyle={{ fontSize: '12px' }} />
+                  <Legend wrapperStyle={{ fontSize: '11px' }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
           ) : (
-            <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center' }}>Nenhum ativo para exibir</p>
+            <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', margin: '40px 0' }}>Nenhum ativo para exibir</p>
           )}
         </div>
       </div>
 
       {/* Form de Nova Transação */}
-      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '16px', marginBottom: '20px' }}>
-        <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', color: '#f8fafc' }}>➕ Registrar Transação</h3>
-        <form onSubmit={handleAddAsset} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', alignItems: 'center' }}>
+      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px' }}>
+        <h3 style={{ margin: '0 0 14px 0', fontSize: '15px', color: '#f8fafc' }}>➕ Registrar Transação</h3>
+        <form onSubmit={handleAddAsset} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
           
           <select 
             value={txType} 
             onChange={e => setTxType(e.target.value)}
-            style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: txType === 'buy' ? '#10b981' : '#ef4444', fontWeight: 'bold', fontSize: '13px' }}
+            style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: txType === 'buy' ? '#10b981' : '#ef4444', fontWeight: 'bold', fontSize: '13px' }}
           >
             <option value="buy">🟢 Compra</option>
             <option value="sell">🔴 Venda</option>
@@ -446,7 +450,7 @@ function PortfolioDashboard({ session }) {
                 setSearchQuery(e.target.value);
               }}
               required
-              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
             />
 
             {searchResults.length > 0 && !selectedCoin && (
@@ -458,7 +462,7 @@ function PortfolioDashboard({ session }) {
                       setSelectedCoin(coin);
                       setSearchResults([]);
                     }}
-                    style={{ padding: '10px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #334155', color: '#fff', fontSize: '13px' }}
+                    style={{ padding: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #334155', color: '#fff', fontSize: '13px' }}
                   >
                     <img src={coin.thumb} alt={coin.name} width="18" height="18" />
                     <strong>{coin.name}</strong> <span style={{ color: '#94a3b8' }}>({coin.symbol.toUpperCase()})</span>
@@ -475,7 +479,7 @@ function PortfolioDashboard({ session }) {
             value={amount} 
             onChange={(e) => setAmount(e.target.value)} 
             required 
-            style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px' }}
+            style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px' }}
           />
 
           <input 
@@ -485,7 +489,7 @@ function PortfolioDashboard({ session }) {
             value={totalSpent} 
             onChange={(e) => setTotalSpent(e.target.value)} 
             required 
-            style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px' }}
+            style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px' }}
           />
 
           <input 
@@ -493,33 +497,33 @@ function PortfolioDashboard({ session }) {
             value={txDate} 
             onChange={(e) => setTxDate(e.target.value)} 
             required 
-            style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px' }}
+            style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px' }}
           />
 
-          <button type="submit" style={{ padding: '12px', background: txType === 'buy' ? '#10b981' : '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>
-            Salvar
+          <button type="submit" style={{ padding: '10px', background: txType === 'buy' ? '#10b981' : '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>
+            Salvar Operação
           </button>
         </form>
       </div>
 
       {/* Calendário de Transações */}
-      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '16px', marginBottom: '20px' }}>
-        <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#f8fafc' }}>📅 Calendário de Operações</h3>
-        <p style={{ margin: '0 0 16px 0', color: '#94a3b8', fontSize: '12px' }}>
-          Dias com borda verde/vermelha indicam que você realizou aportes ou vendas. Clique no dia para ver os detalhes!
+      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px' }}>
+        <h3 style={{ margin: '0 0 6px 0', fontSize: '15px', color: '#f8fafc' }}>📅 Operações por Data</h3>
+        <p style={{ margin: '0 0 12px 0', color: '#94a3b8', fontSize: '12px' }}>
+          Clique nos dias registrados para ver o histórico:
         </p>
 
-        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '6px' }}>
           {transactionDates.length === 0 ? (
-            <p style={{ color: '#64748b', fontSize: '13px' }}>Nenhuma data registrada ainda.</p>
+            <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Nenhuma transação registrada com data.</p>
           ) : (
             transactionDates.map((date) => (
               <button
                 key={date}
                 onClick={() => setSelectedCalendarDate(selectedCalendarDate === date ? null : date)}
                 style={{
-                  padding: '10px 14px',
-                  borderRadius: '10px',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
                   border: selectedCalendarDate === date ? '2px solid #3b82f6' : '1px solid #10b981',
                   background: '#0f172a',
                   color: '#fff',
@@ -535,18 +539,17 @@ function PortfolioDashboard({ session }) {
           )}
         </div>
 
-        {/* Detalhes do Dia Selecionado */}
         {selectedCalendarDate && (
-          <div style={{ marginTop: '16px', padding: '12px', background: '#0f172a', borderRadius: '8px', border: '1px solid #334155' }}>
-            <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#60a5fa' }}>
-              Operações em {selectedCalendarDate.split('-').reverse().join('/')}:
+          <div style={{ marginTop: '12px', padding: '12px', background: '#0f172a', borderRadius: '8px', border: '1px solid #334155' }}>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#60a5fa' }}>
+              Transações em {selectedCalendarDate.split('-').reverse().join('/')}:
             </h4>
-            <ul style={{ margin: 0, paddingLeft: '20px', color: '#cbd5e1', fontSize: '13px' }}>
+            <ul style={{ margin: 0, paddingLeft: '18px', color: '#cbd5e1', fontSize: '12px' }}>
               {allTransactions.filter(t => t.date === selectedCalendarDate).map((tx, idx) => (
                 <li key={idx} style={{ marginBottom: '4px' }}>
                   <span style={{ color: tx.type === 'buy' ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>
                     {tx.type === 'buy' ? 'COMPRA' : 'VENDA'}
-                  </span>: {tx.amount} {tx.coin_symbol.toUpperCase()} ({tx.coin_name}) por {tx.currency === 'BRL' ? 'R$' : '$'} {tx.total}
+                  </span>: {tx.amount} {tx.coin_symbol.toUpperCase()} por {tx.currency === 'BRL' ? 'R$' : '$'} {tx.total}
                 </li>
               ))}
             </ul>
@@ -554,26 +557,26 @@ function PortfolioDashboard({ session }) {
         )}
       </div>
 
-      {/* Tabela de Ativos com Scroll Horizontal no Mobile */}
-      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '16px', overflowX: 'auto' }}>
-        <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', color: '#f8fafc' }}>💼 Meus Ativos ({currency})</h3>
+      {/* Tabela de Ativos com Rolagem */}
+      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', overflow: 'hidden' }}>
+        <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#f8fafc' }}>💼 Meus Ativos ({currency})</h3>
         
         {fetchingPrices && portfolio.length > 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: '13px' }}>Atualizando cotações...</p>
+          <p style={{ color: '#94a3b8', fontSize: '12px' }}>Carregando cotações...</p>
         ) : portfolio.length === 0 ? (
-          <p style={{ textAlign: 'center', color: '#64748b', padding: '16px 0', fontSize: '13px' }}>Sua carteira está vazia. Adicione uma moeda acima!</p>
+          <p style={{ textAlign: 'center', color: '#64748b', padding: '16px 0', fontSize: '13px' }}>Nenhuma moeda cadastrada.</p>
         ) : (
           <div style={{ width: '100%', overflowX: 'auto' }}>
-            <table style={{ width: '100%', minWidth: '650px', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '12px' }}>
-                  <th style={{ padding: '10px 8px' }}>Ativo</th>
-                  <th style={{ padding: '10px 8px' }}>Qtd Total</th>
-                  <th style={{ padding: '10px 8px' }}>Preço Médio</th>
-                  <th style={{ padding: '10px 8px' }}>Preço Atual</th>
-                  <th style={{ padding: '10px 8px' }}>24h</th>
-                  <th style={{ padding: '10px 8px' }}>P/L Total</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'right' }}>Ação</th>
+                <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '8px' }}>Ativo</th>
+                  <th style={{ padding: '8px' }}>Qtd</th>
+                  <th style={{ padding: '8px' }}>P. Médio</th>
+                  <th style={{ padding: '8px' }}>P. Atual</th>
+                  <th style={{ padding: '8px' }}>24h</th>
+                  <th style={{ padding: '8px' }}>P/L Total</th>
+                  <th style={{ padding: '8px', textAlign: 'right' }}>Ação</th>
                 </tr>
               </thead>
               <tbody>
@@ -586,27 +589,27 @@ function PortfolioDashboard({ session }) {
                   const currentPriceDisplay = currency === 'BRL' ? currentPriceUSD * usdToBrlRate : currentPriceUSD;
 
                   return (
-                    <tr key={item.id} style={{ borderBottom: '1px solid #334155', color: '#f8fafc', fontSize: '13px' }}>
-                      <td style={{ padding: '12px 8px', fontWeight: '600' }}>
-                        {item.coin_name} <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '400' }}>({item.coin_symbol.toUpperCase()})</span>
+                    <tr key={item.id} style={{ borderBottom: '1px solid #334155', color: '#f8fafc', fontSize: '12px' }}>
+                      <td style={{ padding: '10px 8px', fontWeight: '600' }}>
+                        {item.coin_name} <span style={{ color: '#64748b', fontSize: '10px' }}>({item.coin_symbol.toUpperCase()})</span>
                       </td>
-                      <td style={{ padding: '12px 8px' }}>{item.amount}</td>
-                      <td style={{ padding: '12px 8px', color: '#cbd5e1' }}>
+                      <td style={{ padding: '10px 8px' }}>{item.amount}</td>
+                      <td style={{ padding: '10px 8px', color: '#cbd5e1' }}>
                         {currencySymbol} {buyPriceDisplay.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                       </td>
-                      <td style={{ padding: '12px 8px', fontWeight: '600' }}>
+                      <td style={{ padding: '10px 8px', fontWeight: '600' }}>
                         {currencySymbol} {currentPriceDisplay.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                       </td>
-                      <td style={{ padding: '12px 8px', color: change24h >= 0 ? '#10b981' : '#ef4444', fontWeight: '600' }}>
+                      <td style={{ padding: '10px 8px', color: change24h >= 0 ? '#10b981' : '#ef4444', fontWeight: '600' }}>
                         {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
                       </td>
-                      <td style={{ padding: '12px 8px', color: itemPnlUSD >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>
-                        {itemPnlUSD >= 0 ? '+' : ''}{formatCurrency(itemPnlUSD)}
+                      <td style={{ padding: '10px 8px', color: itemPnlUSD >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>
+                        {formatCurrency(itemPnlUSD)}
                       </td>
-                      <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                      <td style={{ padding: '10px 8px', textAlign: 'right' }}>
                         <button 
                           onClick={() => handleDeleteAsset(item.id)} 
-                          style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
+                          style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
                         >
                           Excluir
                         </button>
