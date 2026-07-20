@@ -87,7 +87,7 @@ function AuthScreen() {
   );
 }
 
-// --- DASHBOARD PRINCIPAL COM ABAS ---
+// --- DASHBOARD PRINCIPAL ---
 function MainDashboard({ session }) {
   const [activeTab, setActiveTab] = useState('portfolio');
   const [currency, setCurrency] = useState('BRL');
@@ -174,7 +174,7 @@ function MainDashboard({ session }) {
   );
 }
 
-// --- ABA 1: PORTFÓLIO (VISÃO PESSOAL E DETALHADA) ---
+// --- ABA 1: PORTFÓLIO ---
 function PortfolioTab({ session, currency }) {
   const [portfolio, setPortfolio] = useState([]);
   const [prices, setPrices] = useState({});
@@ -223,7 +223,7 @@ function PortfolioTab({ session, currency }) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Busca cotações atuais
+  // Busca cotações atuais em BRL e USD simultaneamente
   useEffect(() => {
     if (portfolio.length === 0) {
       setPrices({});
@@ -234,7 +234,7 @@ function PortfolioTab({ session, currency }) {
     const fetchPrices = async () => {
       const ids = [...new Set(portfolio.map(item => item.coin_id))].join(',');
       try {
-        const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,brl&include_24hr_change=true`);
+        const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,brl`);
         const data = await res.json();
         setPrices(data);
       } catch (err) {
@@ -250,17 +250,7 @@ function PortfolioTab({ session, currency }) {
   }, [portfolio]);
 
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
-
-  // Taxa de conversão USD -> BRL
-  const btcBrl = prices['bitcoin']?.brl || 0;
-  const btcUsd = prices['bitcoin']?.usd || 1;
-  const usdToBrlRate = btcBrl && btcUsd ? btcBrl / btcUsd : 5.0;
-
-  const formatCurrency = (valInUSD) => {
-    const value = currency === 'BRL' ? valInUSD * usdToBrlRate : valInUSD;
-    const formatted = Math.abs(value).toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return value < 0 ? `-${currencySymbol} ${formatted}` : `${currencySymbol} ${formatted}`;
-  };
+  const currKey = currency.toLowerCase();
 
   // Registrar Transação
   const handleAddAsset = async (e) => {
@@ -274,12 +264,7 @@ function PortfolioTab({ session, currency }) {
       parsedAmount = -parsedAmount;
     }
 
-    let totalSpentUSD = parsedTotalSpent;
-    if (currency === 'BRL') {
-      totalSpentUSD = parsedTotalSpent / usdToBrlRate;
-    }
-
-    const unitPriceUSD = Math.abs(totalSpentUSD / parsedAmount);
+    const unitPrice = Math.abs(parsedTotalSpent / parsedAmount);
     const initialHistory = [{ date: txDate, type: txType, amount: parsedAmount, total: parsedTotalSpent, currency }];
 
     const { error } = await supabase.from('portfolio').insert([{
@@ -288,7 +273,8 @@ function PortfolioTab({ session, currency }) {
       coin_name: selectedCoin.name,
       coin_symbol: selectedCoin.symbol,
       amount: parsedAmount,
-      buy_price: unitPriceUSD,
+      buy_price: unitPrice,
+      currency_bought: currency,
       history: initialHistory
     }]);
 
@@ -307,21 +293,20 @@ function PortfolioTab({ session, currency }) {
   };
 
   // Cálculos Globais
-  const totalInvestedUSD = portfolio.reduce((acc, c) => acc + (c.amount * c.buy_price), 0);
-  const currentValueUSD = portfolio.reduce((acc, c) => {
-    const priceUSD = prices[c.coin_id]?.usd || c.buy_price;
-    return acc + (c.amount * priceUSD);
+  const totalInvested = portfolio.reduce((acc, c) => acc + (c.amount * c.buy_price), 0);
+  const currentValue = portfolio.reduce((acc, c) => {
+    const price = prices[c.coin_id]?.[currKey] || c.buy_price;
+    return acc + (c.amount * price);
   }, 0);
-  const totalPnlUSD = currentValueUSD - totalInvestedUSD;
-  const totalPnlPct = totalInvestedUSD > 0 ? (totalPnlUSD / totalInvestedUSD) * 100 : 0;
+  const totalPnl = currentValue - totalInvested;
+  const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
 
   // Gráfico de Alocação
   const pieChartData = portfolio.map((c) => {
-    const priceUSD = prices[c.coin_id]?.usd || c.buy_price;
-    const value = currency === 'BRL' ? (c.amount * priceUSD) * usdToBrlRate : c.amount * priceUSD;
+    const price = prices[c.coin_id]?.[currKey] || c.buy_price;
     return {
       name: c.coin_symbol.toUpperCase(),
-      value: value
+      value: c.amount * price
     };
   });
 
@@ -331,12 +316,11 @@ function PortfolioTab({ session, currency }) {
     date.setDate(date.getDate() - daysAgo);
     const dateStr = `${date.getDate()}/${date.getMonth() + 1}`;
     const factor = (7 - daysAgo) / 7;
-    const estimatedPnlUSD = totalPnlUSD * factor;
-    const displayPnl = currency === 'BRL' ? estimatedPnlUSD * usdToBrlRate : estimatedPnlUSD;
+    const estimatedPnl = totalPnl * factor;
 
     return {
       date: dateStr,
-      pnl: parseFloat(displayPnl.toFixed(2))
+      pnl: parseFloat(estimatedPnl.toFixed(2))
     };
   });
 
@@ -363,14 +347,14 @@ function PortfolioTab({ session, currency }) {
         <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
           <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Patrimônio Atual</span>
           <h2 style={{ margin: '4px 0 0 0', fontSize: '18px', color: '#f8fafc', fontWeight: '800' }}>
-            {formatCurrency(currentValueUSD)}
+            {currencySymbol} {currentValue.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </h2>
         </div>
 
         <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
           <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Lucro / Prejuízo Total</span>
-          <h2 style={{ margin: '4px 0 0 0', fontSize: '17px', color: totalPnlUSD >= 0 ? '#10b981' : '#ef4444', fontWeight: '800' }}>
-            {formatCurrency(totalPnlUSD)}
+          <h2 style={{ margin: '4px 0 0 0', fontSize: '17px', color: totalPnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '800' }}>
+            {currencySymbol} {totalPnl.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             <span style={{ fontSize: '11px', display: 'block', fontWeight: '600', marginTop: '2px' }}>
               ({totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
             </span>
@@ -389,8 +373,8 @@ function PortfolioTab({ session, currency }) {
               <AreaChart data={timeSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="pnlColor" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={totalPnlUSD >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor={totalPnlUSD >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0}/>
+                    <stop offset="5%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -400,7 +384,7 @@ function PortfolioTab({ session, currency }) {
                   formatter={(val) => `${currencySymbol} ${val}`}
                   contentStyle={{ background: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
                 />
-                <Area type="monotone" dataKey="pnl" stroke={totalPnlUSD >= 0 ? '#10b981' : '#ef4444'} fillOpacity={1} fill="url(#pnlColor)" strokeWidth={2} />
+                <Area type="monotone" dataKey="pnl" stroke={totalPnl >= 0 ? '#10b981' : '#ef4444'} fillOpacity={1} fill="url(#pnlColor)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -440,6 +424,13 @@ function PortfolioTab({ session, currency }) {
           )}
         </div>
       </div>
+
+      {/* 🤖 COMPONENTE DE INSIGHTS DA IA */}
+      <AIInsightsCard 
+        portfolio={portfolio} 
+        prices={prices} 
+        currency={currency} 
+      />
 
       {/* Formulário de Registro */}
       <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
@@ -598,20 +589,15 @@ function PortfolioTab({ session, currency }) {
               </thead>
               <tbody>
                 {portfolio.map((item) => {
-                  const currentPriceUSD = prices[item.coin_id]?.usd || 0;
-                  
-                  // Preços convertidos
-                  const buyUnitPrice = currency === 'BRL' ? item.buy_price * usdToBrlRate : item.buy_price;
-                  const currentUnitPrice = currency === 'BRL' ? currentPriceUSD * usdToBrlRate : currentPriceUSD;
+                  const currentUnitPrice = prices[item.coin_id]?.[currKey] || 0;
+                  const buyUnitPrice = item.buy_price;
 
                   const totalPaid = buyUnitPrice * item.amount;
                   const totalCurrentValue = currentUnitPrice * item.amount;
 
-                  // Profit / Loss
-                  const itemPnlUSD = (currentPriceUSD - item.buy_price) * item.amount;
-                  const itemPnlPct = item.buy_price > 0 ? ((currentPriceUSD - item.buy_price) / item.buy_price) * 100 : 0;
+                  const itemPnl = totalCurrentValue - totalPaid;
+                  const itemPnlPct = buyUnitPrice > 0 ? ((currentUnitPrice - buyUnitPrice) / buyUnitPrice) * 100 : 0;
 
-                  // Data da compra
                   const purchaseDate = item.history && item.history[0]?.date 
                     ? item.history[0].date.split('-').reverse().join('/') 
                     : 'N/A';
@@ -646,8 +632,8 @@ function PortfolioTab({ session, currency }) {
                         {currencySymbol} {totalCurrentValue.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
 
-                      <td style={{ padding: '10px 8px', fontWeight: '700', color: itemPnlUSD >= 0 ? '#10b981' : '#ef4444' }}>
-                        {formatCurrency(itemPnlUSD)}
+                      <td style={{ padding: '10px 8px', fontWeight: '700', color: itemPnl >= 0 ? '#10b981' : '#ef4444' }}>
+                        {currencySymbol} {itemPnl.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         <span style={{ fontSize: '10px', display: 'block', fontWeight: '600' }}>
                           ({itemPnlPct >= 0 ? '+' : ''}{itemPnlPct.toFixed(2)}%)
                         </span>
@@ -673,7 +659,138 @@ function PortfolioTab({ session, currency }) {
   );
 }
 
-// --- ABA 2: MERCADO (FAVORITOS SALVOS NO SUPABASE) ---
+// --- CARD DE INSIGHTS DA IA ---
+function AIInsightsCard({ portfolio, prices, currency }) {
+  const [loading, setLoading] = useState(false);
+  const [insight, setInsight] = useState(null);
+  const [error, setError] = useState('');
+
+  const currencySymbol = currency === 'BRL' ? 'R$' : '$';
+  const currKey = currency.toLowerCase();
+
+  const generateInsights = async () => {
+    if (!portfolio || portfolio.length === 0) {
+      setError('Adicione pelo menos um ativo ao portfólio para gerar insights.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    // Preparação do contexto para enviar para a IA
+    const portfolioSummary = portfolio.map((item) => {
+      const currentPrice = prices[item.coin_id]?.[currKey] || item.buy_price;
+      const totalPaid = item.amount * item.buy_price;
+      const currentValue = item.amount * currentPrice;
+      const pnlPct = item.buy_price > 0 ? ((currentPrice - item.buy_price) / item.buy_price) * 100 : 0;
+
+      return {
+        moeda: item.coin_name,
+        simbolo: item.coin_symbol.toUpperCase(),
+        quantidade: item.amount,
+        precoCompra: `${currencySymbol} ${item.buy_price}`,
+        precoAtual: `${currencySymbol} ${currentPrice}`,
+        valorTotalAtual: `${currencySymbol} ${currentValue.toFixed(2)}`,
+        lucroPrejuizoPct: `${pnlPct.toFixed(2)}%`
+      };
+    });
+
+    const promptText = `
+      Você é um analista sênior de criptomoedas especialista em gestão de risco e portfólio.
+      Analise o seguinte portfólio do usuário (Moeda de exibição: ${currency}):
+
+      ${JSON.stringify(portfolioSummary, null, 2)}
+
+      Forneça uma análise concisa, direta e objetiva em Português contendo exatamente estes 3 tópicos:
+      1. 🎯 **Diagnóstico de Risco & Alocação**: Avalie a diversificação do portfólio.
+      2. 💡 **O que fazer agora**: Sugira se o momento é de manter (holding), preço médio (DCA) ou rebalanceamento, justificando com base no P&L.
+      3. ⚠️ **Pontos de Atenção**: Destaque o principal ponto de risco desse portfólio no curto prazo.
+
+      Mantenha um tom profissional, direto ao ponto e amigável.
+    `;
+
+    try {
+      const apiKey = process.env.REACT_APP_GEMINI_API_KEY || 'SUA_GEMINI_API_KEY_AQUI';
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptText }] }]
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error.message || 'Erro ao comunicar com a API do Gemini.');
+      }
+
+      const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      setInsight(textResponse);
+    } catch (err) {
+      console.error(err);
+      setError('Erro ao gerar insights. Verifique sua chave de API do Gemini.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
+      
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+        <div>
+          <h3 style={{ margin: '0 0 4px 0', fontSize: '15px', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            ✨ AI Portfolio Copilot
+          </h3>
+          <p style={{ margin: 0, color: '#94a3b8', fontSize: '12px' }}>
+            Análise e recomendações personalizadas geradas por IA.
+          </p>
+        </div>
+
+        <button
+          onClick={generateInsights}
+          disabled={loading}
+          style={{
+            padding: '8px 14px',
+            background: loading ? '#475569' : 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontWeight: '700',
+            fontSize: '12px',
+            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.25)'
+          }}
+        >
+          {loading ? 'Analisando...' : '⚡ Gerar Insights'}
+        </button>
+      </div>
+
+      {error && (
+        <p style={{ color: '#ef4444', fontSize: '12px', background: 'rgba(239, 68, 68, 0.1)', padding: '10px', borderRadius: '8px', margin: '12px 0 0 0' }}>
+          {error}
+        </p>
+      )}
+
+      {insight && (
+        <div style={{ marginTop: '14px', padding: '14px', background: '#0f172a', borderRadius: '12px', border: '1px solid #334155', color: '#cbd5e1', fontSize: '13px', lineHeight: '1.6', whiteSpace: 'pre-line' }}>
+          {insight}
+          
+          <span style={{ display: 'block', marginTop: '12px', fontSize: '10px', color: '#64748b', fontStyle: 'italic' }}>
+            ⚠️ Os insights são gerados por Inteligência Artificial e têm caráter estritamente informativo, não constituindo recomendação de investimento.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- ABA 2: MERCADO ---
 function MarketTab({ session, currency }) {
   const [marketCoins, setMarketCoins] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -682,7 +799,6 @@ function MarketTab({ session, currency }) {
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
   const vsCurrency = currency.toLowerCase();
 
-  // Carregar Favoritos do Supabase
   const loadFavorites = async () => {
     const { data, error } = await supabase.from('favorites').select('coin_id');
     if (!error && data) {
@@ -694,7 +810,6 @@ function MarketTab({ session, currency }) {
     loadFavorites();
   }, []);
 
-  // Carregar Dados do Mercado
   useEffect(() => {
     const fetchMarketData = async () => {
       setLoading(true);
@@ -714,12 +829,10 @@ function MarketTab({ session, currency }) {
     fetchMarketData();
   }, [vsCurrency]);
 
-  // Alternar Favorito no Supabase
   const toggleFavorite = async (coinId) => {
     const isFav = favorites.includes(coinId);
 
     if (isFav) {
-      // Remove do Supabase
       const { error } = await supabase
         .from('favorites')
         .delete()
@@ -730,7 +843,6 @@ function MarketTab({ session, currency }) {
         setFavorites(favorites.filter(id => id !== coinId));
       }
     } else {
-      // Adiciona no Supabase
       const { error } = await supabase
         .from('favorites')
         .insert([{ user_id: session.user.id, coin_id: coinId }]);
@@ -741,7 +853,6 @@ function MarketTab({ session, currency }) {
     }
   };
 
-  // Ordena para colocar favoritos no topo
   const sortedCoins = [...marketCoins].sort((a, b) => {
     const aFav = favorites.includes(a.id);
     const bFav = favorites.includes(b.id);
