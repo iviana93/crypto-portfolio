@@ -24,7 +24,7 @@ export default function App() {
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: '#f8fafc', backgroundColor: '#0f172a', minHeight: '100vh' }}>Carregando dashboard...</div>;
 
   return (
-    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh', padding: '24px' }}>
+    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh', padding: '16px', boxSizing: 'border-box' }}>
       {!session ? <AuthScreen /> : <PortfolioDashboard session={session} />}
     </div>
   );
@@ -51,8 +51,8 @@ function AuthScreen() {
   };
 
   return (
-    <div style={{ maxWidth: '400px', margin: '80px auto', background: '#1e293b', border: '1px solid #334155', padding: '32px', borderRadius: '16px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)' }}>
-      <h2 style={{ marginTop: 0, color: '#f8fafc', fontSize: '22px' }}>{isSignUp ? 'Criar Conta' : 'Entrar no Crypto Tracker'}</h2>
+    <div style={{ maxWidth: '400px', margin: '40px auto', background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)' }}>
+      <h2 style={{ marginTop: 0, color: '#f8fafc', fontSize: '20px' }}>{isSignUp ? 'Criar Conta' : 'Entrar no Crypto Tracker'}</h2>
       <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <input 
           type="email" 
@@ -93,6 +93,9 @@ function PortfolioDashboard({ session }) {
   const [prices, setPrices] = useState({});
   const [fetchingPrices, setFetchingPrices] = useState(true);
 
+  // Estado da Moeda Selecionada
+  const [currency, setCurrency] = useState('BRL');
+
   // Busca
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -101,6 +104,11 @@ function PortfolioDashboard({ session }) {
   // Inputs
   const [amount, setAmount] = useState('');
   const [totalSpent, setTotalSpent] = useState('');
+  const [txType, setTxType] = useState('buy'); // 'buy' ou 'sell'
+  const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Calendário
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
 
   const loadPortfolio = async () => {
     const { data, error } = await supabase.from('portfolio').select('*');
@@ -131,7 +139,7 @@ function PortfolioDashboard({ session }) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Cotações
+  // Cotações em USD e BRL
   useEffect(() => {
     if (portfolio.length === 0) {
       setPrices({});
@@ -142,7 +150,7 @@ function PortfolioDashboard({ session }) {
     const fetchPrices = async () => {
       const ids = [...new Set(portfolio.map(item => item.coin_id))].join(',');
       try {
-        const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
+        const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,brl&include_24hr_change=true`);
         const data = await res.json();
         setPrices(data);
       } catch (err) {
@@ -157,41 +165,77 @@ function PortfolioDashboard({ session }) {
     return () => clearInterval(interval);
   }, [portfolio]);
 
-  // Lógica de Compra: Adicionar Novo ou Atualizar / Somar com Existente
+  const currencySymbol = currency === 'BRL' ? 'R$' : '$';
+
+  // Taxa USD -> BRL
+  const btcBrl = prices['bitcoin']?.brl || 0;
+  const btcUsd = prices['bitcoin']?.usd || 1;
+  const usdToBrlRate = btcBrl && btcUsd ? btcBrl / btcUsd : 5.0;
+
+  const formatCurrency = (valInUSD) => {
+    const value = currency === 'BRL' ? valInUSD * usdToBrlRate : valInUSD;
+    return `${currencySymbol} ${value.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Lógica de Compra / Venda
   const handleAddAsset = async (e) => {
     e.preventDefault();
     if (!selectedCoin || !amount || !totalSpent) return;
 
-    const parsedAmount = parseFloat(amount);
-    const parsedTotalSpent = parseFloat(totalSpent);
-    const newUnitPrice = parsedTotalSpent / parsedAmount;
+    let parsedAmount = parseFloat(amount);
+    let parsedTotalSpent = parseFloat(totalSpent);
 
-    // Verifica se o ativo já existe na carteira
+    if (txType === 'sell') {
+      parsedAmount = -parsedAmount;
+    }
+
+    let totalSpentUSD = parsedTotalSpent;
+    if (currency === 'BRL') {
+      totalSpentUSD = parsedTotalSpent / usdToBrlRate;
+    }
+
+    const newUnitPriceUSD = Math.abs(totalSpentUSD / parsedAmount);
     const existingAsset = portfolio.find(item => item.coin_id === selectedCoin.id);
 
     if (existingAsset) {
-      // Recalcula a quantidade acumulada e o preço médio ponderado
       const updatedAmount = existingAsset.amount + parsedAmount;
-      const totalPreviousCost = existingAsset.amount * existingAsset.buy_price;
-      const updatedAvgPrice = (totalPreviousCost + parsedTotalSpent) / updatedAmount;
 
-      const { error } = await supabase
-        .from('portfolio')
-        .update({
-          amount: updatedAmount,
-          buy_price: updatedAvgPrice
-        })
-        .eq('id', existingAsset.id);
+      if (updatedAmount <= 0) {
+        await supabase.from('portfolio').delete().eq('id', existingAsset.id);
+      } else {
+        const updatedHistory = existingAsset.history ? [...existingAsset.history] : [];
+        updatedHistory.push({ date: txDate, type: txType, amount: Math.abs(parsedAmount), total: parsedTotalSpent, currency });
 
-      if (!error) loadPortfolio();
+        const totalPreviousCost = existingAsset.amount * existingAsset.buy_price;
+        const updatedAvgPrice = txType === 'buy' 
+          ? (totalPreviousCost + totalSpentUSD) / updatedAmount 
+          : existingAsset.buy_price;
+
+        await supabase
+          .from('portfolio')
+          .update({
+            amount: updatedAmount,
+            buy_price: updatedAvgPrice,
+            history: updatedHistory
+          })
+          .eq('id', existingAsset.id);
+      }
+      loadPortfolio();
     } else {
-      // Inserção normal caso seja um ativo novo
+      if (txType === 'sell') {
+        alert('Você não tem esse ativo no portfólio para vender!');
+        return;
+      }
+
+      const initialHistory = [{ date: txDate, type: txType, amount: parsedAmount, total: parsedTotalSpent, currency }];
+
       const { error } = await supabase.from('portfolio').insert([{
         coin_id: selectedCoin.id,
         coin_name: selectedCoin.name,
         coin_symbol: selectedCoin.symbol,
         amount: parsedAmount,
-        buy_price: newUnitPrice
+        buy_price: newUnitPriceUSD,
+        history: initialHistory
       }]);
 
       if (!error) loadPortfolio();
@@ -210,118 +254,154 @@ function PortfolioDashboard({ session }) {
   };
 
   // Cálculos Globais
-  const totalInvested = portfolio.reduce((acc, c) => acc + (c.amount * c.buy_price), 0);
-  const currentValue = portfolio.reduce((acc, c) => {
-    const price = prices[c.coin_id]?.usd || c.buy_price;
-    return acc + (c.amount * price);
+  const totalInvestedUSD = portfolio.reduce((acc, c) => acc + (c.amount * c.buy_price), 0);
+  const currentValueUSD = portfolio.reduce((acc, c) => {
+    const priceUSD = prices[c.coin_id]?.usd || c.buy_price;
+    return acc + (c.amount * priceUSD);
   }, 0);
-  const totalPnl = currentValue - totalInvested;
-  const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
+  const totalPnlUSD = currentValueUSD - totalInvestedUSD;
+  const totalPnlPct = totalInvestedUSD > 0 ? (totalPnlUSD / totalInvestedUSD) * 100 : 0;
 
-  // Gráfico de Rosca
+  // Pie Chart
   const pieChartData = portfolio.map((c) => {
-    const price = prices[c.coin_id]?.usd || c.buy_price;
+    const priceUSD = prices[c.coin_id]?.usd || c.buy_price;
+    const value = currency === 'BRL' ? (c.amount * priceUSD) * usdToBrlRate : c.amount * priceUSD;
     return {
       name: c.coin_symbol.toUpperCase(),
-      value: c.amount * price
+      value: value
     };
   });
 
-  // Simulação de Histórico de 7 Dias para o Gráfico de Linha (P/L Temporal)
+  // Time Series Chart
   const timeSeriesData = [6, 5, 4, 3, 2, 1, 0].map((daysAgo) => {
     const date = new Date();
     date.setDate(date.getDate() - daysAgo);
     const dateStr = `${date.getDate()}/${date.getMonth() + 1}`;
 
-    // Variação simulada progressiva até atingir o P/L de hoje
     const factor = (7 - daysAgo) / 7;
-    const estimatedPnl = totalPnl * factor;
+    const estimatedPnlUSD = totalPnlUSD * factor;
+    const displayPnl = currency === 'BRL' ? estimatedPnlUSD * usdToBrlRate : estimatedPnlUSD;
 
     return {
       date: dateStr,
-      pnl: parseFloat(estimatedPnl.toFixed(2))
+      pnl: parseFloat(displayPnl.toFixed(2))
     };
   });
+
+  // Mapeamento de Transações no Calendário
+  const allTransactions = [];
+  portfolio.forEach((asset) => {
+    if (asset.history && Array.isArray(asset.history)) {
+      asset.history.forEach((tx) => {
+        allTransactions.push({
+          ...tx,
+          coin_name: asset.coin_name,
+          coin_symbol: asset.coin_symbol
+        });
+      });
+    }
+  });
+
+  const transactionDates = [...new Set(allTransactions.map(t => t.date))];
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
       
-      {/* Header */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+      {/* Header com Responsividade Mobile */}
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '26px', color: '#f8fafc', fontWeight: '800' }}>Crypto Portfolio 🚀</h1>
-          <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '14px' }}>Acompanhamento em tempo real</p>
+          <h1 style={{ margin: 0, fontSize: '22px', color: '#f8fafc', fontWeight: '800' }}>Crypto Portfolio 🚀</h1>
+          <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>Acompanhamento em tempo real</p>
         </div>
-        <button 
-          onClick={() => supabase.auth.signOut()} 
-          style={{ padding: '10px 18px', borderRadius: '8px', border: '1px solid #334155', background: '#1e293b', color: '#f8fafc', cursor: 'pointer', fontWeight: '600' }}
-        >
-          Sair
-        </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', maxWidth: '300px', justifyContent: 'flex-end' }}>
+          <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '2px', display: 'flex', gap: '2px', width: '100%' }}>
+            <button 
+              onClick={() => setCurrency('BRL')}
+              style={{ flex: 1, padding: '8px', borderRadius: '6px', border: 'none', background: currency === 'BRL' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}
+            >
+              🇧🇷 BRL
+            </button>
+            <button 
+              onClick={() => setCurrency('USD')}
+              style={{ flex: 1, padding: '8px', borderRadius: '6px', border: 'none', background: currency === 'USD' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}
+            >
+              🇺🇸 USD
+            </button>
+          </div>
+
+          <button 
+            onClick={() => supabase.auth.signOut()} 
+            style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #334155', background: '#1e293b', color: '#f8fafc', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}
+          >
+            Sair
+          </button>
+        </div>
       </header>
 
-      {/* Grid Superior: Cards de Resumo */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px' }}>
-          <span style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '500' }}>Patrimônio Total</span>
-          <h2 style={{ margin: '8px 0 0 0', fontSize: '32px', color: '#f8fafc', fontWeight: '800' }}>
-            ${currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      {/* Cards de Resumo */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '16px' }}>
+          <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500' }}>Patrimônio Total</span>
+          <h2 style={{ margin: '6px 0 0 0', fontSize: '26px', color: '#f8fafc', fontWeight: '800' }}>
+            {formatCurrency(currentValueUSD)}
           </h2>
         </div>
 
-        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px' }}>
-          <span style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '500' }}>Lucro / Prejuízo (P/L)</span>
-          <h2 style={{ margin: '8px 0 0 0', fontSize: '32px', color: totalPnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '800' }}>
-            {totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            <span style={{ fontSize: '18px', marginLeft: '8px', fontWeight: '600' }}>
+        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '16px' }}>
+          <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500' }}>Lucro / Prejuízo (P/L)</span>
+          <h2 style={{ margin: '6px 0 0 0', fontSize: '26px', color: totalPnlUSD >= 0 ? '#10b981' : '#ef4444', fontWeight: '800' }}>
+            {totalPnlUSD >= 0 ? '+' : ''}{formatCurrency(totalPnlUSD)}
+            <span style={{ fontSize: '16px', marginLeft: '6px', fontWeight: '600' }}>
               ({totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
             </span>
           </h2>
         </div>
       </div>
 
-      {/* Grid de Gráficos: P/L no Tempo + Distribuição da Carteira */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-        
-        {/* Gráfico 1: Evolução do P/L */}
-        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '16px' }}>
-          <span style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '500', display: 'block', marginBottom: '16px' }}>Evolução do P/L (Últimos 7 dias)</span>
-          <div style={{ width: '100%', height: '200px' }}>
+      {/* Grid de Gráficos */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px' }}>
+          <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500', display: 'block', marginBottom: '12px' }}>
+            Evolução do P/L ({currency})
+          </span>
+          <div style={{ width: '100%', height: '180px' }}>
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={timeSeriesData}>
                 <defs>
                   <linearGradient id="pnlColor" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0}/>
+                    <stop offset="5%" stopColor={totalPnlUSD >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor={totalPnlUSD >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} />
-                <YAxis stroke="#94a3b8" fontSize={12} domain={['auto', 'auto']} />
+                <XAxis dataKey="date" stroke="#94a3b8" fontSize={11} />
+                <YAxis stroke="#94a3b8" fontSize={11} domain={['auto', 'auto']} />
                 <Tooltip 
-                  formatter={(val) => `$${val}`}
-                  contentStyle={{ background: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
+                  formatter={(val) => `${currencySymbol} ${val}`}
+                  contentStyle={{ background: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
                 />
-                <Area type="monotone" dataKey="pnl" stroke={totalPnl >= 0 ? '#10b981' : '#ef4444'} fillOpacity={1} fill="url(#pnlColor)" strokeWidth={2} />
+                <Area type="monotone" dataKey="pnl" stroke={totalPnlUSD >= 0 ? '#10b981' : '#ef4444'} fillOpacity={1} fill="url(#pnlColor)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Gráfico 2: Pie Chart de Distribuição */}
-        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <span style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '500', marginBottom: '12px' }}>Alocação da Carteira</span>
+        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500', marginBottom: '8px' }}>
+            Alocação ({currency})
+          </span>
           {portfolio.length > 0 ? (
-            <div style={{ width: '100%', height: '200px' }}>
+            <div style={{ width: '100%', height: '180px' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={pieChartData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={45}
-                    outerRadius={70}
-                    paddingAngle={5}
+                    innerRadius={40}
+                    outerRadius={65}
+                    paddingAngle={4}
                     dataKey="value"
                   >
                     {pieChartData.map((entry, index) => (
@@ -329,36 +409,44 @@ function PortfolioDashboard({ session }) {
                     ))}
                   </Pie>
                   <Tooltip 
-                    formatter={(value) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                    contentStyle={{ background: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
+                    formatter={(value) => `${currencySymbol} ${value.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    contentStyle={{ background: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
                   />
-                  <Legend />
+                  <Legend wrapperStyle={{ fontSize: '12px' }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
           ) : (
-            <p style={{ color: '#64748b', fontSize: '14px', textAlign: 'center' }}>Nenhum ativo para exibir gráfico</p>
+            <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center' }}>Nenhum ativo para exibir</p>
           )}
         </div>
-
       </div>
 
-      {/* Formulário de Adicionar Transação */}
-      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px', marginBottom: '24px' }}>
-        <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#f8fafc' }}>➕ Adicionar Transação</h3>
-        <form onSubmit={handleAddAsset} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', alignItems: 'center' }}>
+      {/* Form de Nova Transação */}
+      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '16px', marginBottom: '20px' }}>
+        <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', color: '#f8fafc' }}>➕ Registrar Transação</h3>
+        <form onSubmit={handleAddAsset} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', alignItems: 'center' }}>
           
+          <select 
+            value={txType} 
+            onChange={e => setTxType(e.target.value)}
+            style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: txType === 'buy' ? '#10b981' : '#ef4444', fontWeight: 'bold', fontSize: '13px' }}
+          >
+            <option value="buy">🟢 Compra</option>
+            <option value="sell">🔴 Venda</option>
+          </select>
+
           <div style={{ position: 'relative' }}>
             <input 
               type="text" 
-              placeholder="Moeda (ex: Bitcoin, SOL...)"
+              placeholder="Moeda (ex: Bitcoin...)"
               value={selectedCoin ? `${selectedCoin.name} (${selectedCoin.symbol.toUpperCase()})` : searchQuery}
               onChange={(e) => {
                 setSelectedCoin(null);
                 setSearchQuery(e.target.value);
               }}
               required
-              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
             />
 
             {searchResults.length > 0 && !selectedCoin && (
@@ -370,9 +458,9 @@ function PortfolioDashboard({ session }) {
                       setSelectedCoin(coin);
                       setSearchResults([]);
                     }}
-                    style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #334155', color: '#fff' }}
+                    style={{ padding: '10px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #334155', color: '#fff', fontSize: '13px' }}
                   >
-                    <img src={coin.thumb} alt={coin.name} width="20" height="20" />
+                    <img src={coin.thumb} alt={coin.name} width="18" height="18" />
                     <strong>{coin.name}</strong> <span style={{ color: '#94a3b8' }}>({coin.symbol.toUpperCase()})</span>
                   </li>
                 ))}
@@ -383,83 +471,152 @@ function PortfolioDashboard({ session }) {
           <input 
             type="number" 
             step="any" 
-            placeholder="Quantidade comprada" 
+            placeholder="Quantidade" 
             value={amount} 
             onChange={(e) => setAmount(e.target.value)} 
             required 
-            style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px' }}
+            style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px' }}
           />
 
           <input 
             type="number" 
             step="any" 
-            placeholder="Total Investido USD (ex: 19.50)" 
+            placeholder={`Total (${currency})`} 
             value={totalSpent} 
             onChange={(e) => setTotalSpent(e.target.value)} 
             required 
-            style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px' }}
+            style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px' }}
           />
 
-          <button type="submit" style={{ padding: '12px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
-            Adicionar / Somar
+          <input 
+            type="date" 
+            value={txDate} 
+            onChange={(e) => setTxDate(e.target.value)} 
+            required 
+            style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px' }}
+          />
+
+          <button type="submit" style={{ padding: '12px', background: txType === 'buy' ? '#10b981' : '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>
+            Salvar
           </button>
         </form>
       </div>
 
-      {/* Tabela de Ativos */}
-      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px', overflowX: 'auto' }}>
-        <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#f8fafc' }}>💼 Meus Ativos</h3>
+      {/* Calendário de Transações */}
+      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '16px', marginBottom: '20px' }}>
+        <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#f8fafc' }}>📅 Calendário de Operações</h3>
+        <p style={{ margin: '0 0 16px 0', color: '#94a3b8', fontSize: '12px' }}>
+          Dias com borda verde/vermelha indicam que você realizou aportes ou vendas. Clique no dia para ver os detalhes!
+        </p>
+
+        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
+          {transactionDates.length === 0 ? (
+            <p style={{ color: '#64748b', fontSize: '13px' }}>Nenhuma data registrada ainda.</p>
+          ) : (
+            transactionDates.map((date) => (
+              <button
+                key={date}
+                onClick={() => setSelectedCalendarDate(selectedCalendarDate === date ? null : date)}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  border: selectedCalendarDate === date ? '2px solid #3b82f6' : '1px solid #10b981',
+                  background: '#0f172a',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                📆 {date.split('-').reverse().join('/')}
+              </button>
+            ))
+          )}
+        </div>
+
+        {/* Detalhes do Dia Selecionado */}
+        {selectedCalendarDate && (
+          <div style={{ marginTop: '16px', padding: '12px', background: '#0f172a', borderRadius: '8px', border: '1px solid #334155' }}>
+            <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#60a5fa' }}>
+              Operações em {selectedCalendarDate.split('-').reverse().join('/')}:
+            </h4>
+            <ul style={{ margin: 0, paddingLeft: '20px', color: '#cbd5e1', fontSize: '13px' }}>
+              {allTransactions.filter(t => t.date === selectedCalendarDate).map((tx, idx) => (
+                <li key={idx} style={{ marginBottom: '4px' }}>
+                  <span style={{ color: tx.type === 'buy' ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>
+                    {tx.type === 'buy' ? 'COMPRA' : 'VENDA'}
+                  </span>: {tx.amount} {tx.coin_symbol.toUpperCase()} ({tx.coin_name}) por {tx.currency === 'BRL' ? 'R$' : '$'} {tx.total}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* Tabela de Ativos com Scroll Horizontal no Mobile */}
+      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '16px', overflowX: 'auto' }}>
+        <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', color: '#f8fafc' }}>💼 Meus Ativos ({currency})</h3>
         
         {fetchingPrices && portfolio.length > 0 ? (
-          <p style={{ color: '#94a3b8' }}>Atualizando cotações...</p>
+          <p style={{ color: '#94a3b8', fontSize: '13px' }}>Atualizando cotações...</p>
         ) : portfolio.length === 0 ? (
-          <p style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>Sua carteira está vazia. Adicione uma moeda acima!</p>
+          <p style={{ textAlign: 'center', color: '#64748b', padding: '16px 0', fontSize: '13px' }}>Sua carteira está vazia. Adicione uma moeda acima!</p>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '13px' }}>
-                <th style={{ padding: '12px 8px' }}>Ativo</th>
-                <th style={{ padding: '12px 8px' }}>Qtd Total</th>
-                <th style={{ padding: '12px 8px' }}>Preço Médio</th>
-                <th style={{ padding: '12px 8px' }}>Preço Atual</th>
-                <th style={{ padding: '12px 8px' }}>24h</th>
-                <th style={{ padding: '12px 8px' }}>P/L Total</th>
-                <th style={{ padding: '12px 8px', textAlign: 'right' }}>Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {portfolio.map((item) => {
-                const currentPrice = prices[item.coin_id]?.usd || 0;
-                const change24h = prices[item.coin_id]?.usd_24h_change || 0;
-                const itemPnl = (currentPrice - item.buy_price) * item.amount;
+          <div style={{ width: '100%', overflowX: 'auto' }}>
+            <table style={{ width: '100%', minWidth: '650px', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '12px' }}>
+                  <th style={{ padding: '10px 8px' }}>Ativo</th>
+                  <th style={{ padding: '10px 8px' }}>Qtd Total</th>
+                  <th style={{ padding: '10px 8px' }}>Preço Médio</th>
+                  <th style={{ padding: '10px 8px' }}>Preço Atual</th>
+                  <th style={{ padding: '10px 8px' }}>24h</th>
+                  <th style={{ padding: '10px 8px' }}>P/L Total</th>
+                  <th style={{ padding: '10px 8px', textAlign: 'right' }}>Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {portfolio.map((item) => {
+                  const currentPriceUSD = prices[item.coin_id]?.usd || 0;
+                  const change24h = prices[item.coin_id]?.usd_24h_change || 0;
+                  const itemPnlUSD = (currentPriceUSD - item.buy_price) * item.amount;
 
-                return (
-                  <tr key={item.id} style={{ borderBottom: '1px solid #334155', color: '#f8fafc', fontSize: '14px' }}>
-                    <td style={{ padding: '16px 8px', fontWeight: '600' }}>
-                      {item.coin_name} <span style={{ color: '#64748b', fontSize: '12px', fontWeight: '400' }}>({item.coin_symbol.toUpperCase()})</span>
-                    </td>
-                    <td style={{ padding: '16px 8px' }}>{item.amount}</td>
-                    <td style={{ padding: '16px 8px', color: '#cbd5e1' }}>${item.buy_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
-                    <td style={{ padding: '16px 8px', fontWeight: '600' }}>${currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
-                    <td style={{ padding: '16px 8px', color: change24h >= 0 ? '#10b981' : '#ef4444', fontWeight: '600' }}>
-                      {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
-                    </td>
-                    <td style={{ padding: '16px 8px', color: itemPnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>
-                      {itemPnl >= 0 ? '+' : ''}${itemPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td style={{ padding: '16px 8px', textAlign: 'right' }}>
-                      <button 
-                        onClick={() => handleDeleteAsset(item.id)} 
-                        style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
-                      >
-                        Excluir
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                  const buyPriceDisplay = currency === 'BRL' ? item.buy_price * usdToBrlRate : item.buy_price;
+                  const currentPriceDisplay = currency === 'BRL' ? currentPriceUSD * usdToBrlRate : currentPriceUSD;
+
+                  return (
+                    <tr key={item.id} style={{ borderBottom: '1px solid #334155', color: '#f8fafc', fontSize: '13px' }}>
+                      <td style={{ padding: '12px 8px', fontWeight: '600' }}>
+                        {item.coin_name} <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '400' }}>({item.coin_symbol.toUpperCase()})</span>
+                      </td>
+                      <td style={{ padding: '12px 8px' }}>{item.amount}</td>
+                      <td style={{ padding: '12px 8px', color: '#cbd5e1' }}>
+                        {currencySymbol} {buyPriceDisplay.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                      </td>
+                      <td style={{ padding: '12px 8px', fontWeight: '600' }}>
+                        {currencySymbol} {currentPriceDisplay.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                      </td>
+                      <td style={{ padding: '12px 8px', color: change24h >= 0 ? '#10b981' : '#ef4444', fontWeight: '600' }}>
+                        {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
+                      </td>
+                      <td style={{ padding: '12px 8px', color: itemPnlUSD >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>
+                        {itemPnlUSD >= 0 ? '+' : ''}{formatCurrency(itemPnlUSD)}
+                      </td>
+                      <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                        <button 
+                          onClick={() => handleDeleteAsset(item.id)} 
+                          style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
+                        >
+                          Excluir
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
