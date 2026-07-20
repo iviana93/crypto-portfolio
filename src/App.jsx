@@ -24,7 +24,7 @@ export default function App() {
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: '#f8fafc', backgroundColor: '#0f172a', minHeight: '100vh' }}>Carregando dashboard...</div>;
 
   return (
-    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh', padding: '16px 16px 40px 16px', boxSizing: 'border-box' }}>
+    <div style={{ width: '100%', minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', justifyContent: 'center' }}>
       {!session ? <AuthScreen /> : <PortfolioDashboard session={session} />}
     </div>
   );
@@ -51,7 +51,7 @@ function AuthScreen() {
   };
 
   return (
-    <div style={{ maxWidth: '400px', margin: '40px auto', background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)' }}>
+    <div style={{ width: '100%', maxWidth: '400px', margin: '40px 16px', background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)', boxSizing: 'border-box' }}>
       <h2 style={{ marginTop: 0, color: '#f8fafc', fontSize: '20px' }}>{isSignUp ? 'Criar Conta' : 'Entrar no Crypto Tracker'}</h2>
       <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <input 
@@ -60,7 +60,7 @@ function AuthScreen() {
           value={email} 
           onChange={(e) => setEmail(e.target.value)}
           required 
-          style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px' }}
+          style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }}
         />
         <input 
           type="password" 
@@ -68,7 +68,7 @@ function AuthScreen() {
           value={password} 
           onChange={(e) => setPassword(e.target.value)}
           required 
-          style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px' }}
+          style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }}
         />
         <button type="submit" style={{ padding: '12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}>
           {isSignUp ? 'Cadastrar' : 'Entrar'}
@@ -306,12 +306,12 @@ function PortfolioDashboard({ session }) {
   const transactionDates = [...new Set(allTransactions.map(t => t.date))];
 
   return (
-    <div style={{ maxWidth: '900px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+    <div style={{ width: '100%', maxWidth: '800px', padding: '20px 16px 40px 16px', boxSizing: 'border-box' }}>
       
-      {/* Header Corrigido para Mobile */}
-      <header style={{ marginBottom: '20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <h1 style={{ margin: 0, fontSize: '22px', color: '#f8fafc', fontWeight: '800' }}>
+      {/* Header com estrutura limpa e sem estouro */}
+      <header style={{ width: '100%', marginBottom: '20px', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <h1 style={{ margin: 0, fontSize: '20px', color: '#f8fafc', fontWeight: '800' }}>
             Crypto Portfolio 🚀
           </h1>
 
@@ -323,19 +323,19 @@ function PortfolioDashboard({ session }) {
           </button>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
           <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>Acompanhamento em tempo real</p>
 
           <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '2px', display: 'flex', gap: '2px' }}>
             <button 
               onClick={() => setCurrency('BRL')}
-              style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: currency === 'BRL' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}
+              style={{ padding: '6px 10px', borderRadius: '6px', border: 'none', background: currency === 'BRL' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '11px' }}
             >
               🇧🇷 BRL
             </button>
             <button 
               onClick={() => setCurrency('USD')}
-              style={{ padding: '6px 12px', borderRadius: '6px', border: 'none', background: currency === 'USD' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}
+              style={{ padding: '6px 10px', borderRadius: '6px', border: 'none', background: currency === 'USD' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '11px' }}
             >
               🇺🇸 USD
             </button>
@@ -343,17 +343,17 @@ function PortfolioDashboard({ session }) {
         </div>
       </header>
 
-      {/* Cards de Resumo Lado a Lado no Mobile */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px', borderRadius: '14px' }}>
-          <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Patrimônio</span>
+      {/* Resumo do Patrimônio */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
+          <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Patrimônio</span>
           <h2 style={{ margin: '4px 0 0 0', fontSize: '18px', color: '#f8fafc', fontWeight: '800' }}>
             {formatCurrency(currentValueUSD)}
           </h2>
         </div>
 
-        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px', borderRadius: '14px' }}>
-          <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Lucro / Prejuízo</span>
+        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
+          <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Lucro / Prejuízo</span>
           <h2 style={{ margin: '4px 0 0 0', fontSize: '17px', color: totalPnlUSD >= 0 ? '#10b981' : '#ef4444', fontWeight: '800' }}>
             {formatCurrency(totalPnlUSD)}
             <span style={{ fontSize: '11px', display: 'block', fontWeight: '600', marginTop: '2px' }}>
@@ -363,9 +363,9 @@ function PortfolioDashboard({ session }) {
         </div>
       </div>
 
-      {/* Grid de Gráficos */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px' }}>
+      {/* Gráficos */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', boxSizing: 'border-box' }}>
           <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500', display: 'block', marginBottom: '12px' }}>
             Evolução do P/L ({currency})
           </span>
@@ -391,7 +391,7 @@ function PortfolioDashboard({ session }) {
           </div>
         </div>
 
-        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px' }}>
+        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', boxSizing: 'border-box' }}>
           <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500', display: 'block', marginBottom: '8px' }}>
             Alocação ({currency})
           </span>
@@ -421,13 +421,13 @@ function PortfolioDashboard({ session }) {
               </ResponsiveContainer>
             </div>
           ) : (
-            <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', margin: '40px 0' }}>Nenhum ativo para exibir</p>
+            <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', margin: '40px 0' }}>Nenhum ativo registrado</p>
           )}
         </div>
       </div>
 
-      {/* Form de Nova Transação */}
-      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px' }}>
+      {/* Formulário */}
+      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
         <h3 style={{ margin: '0 0 14px 0', fontSize: '15px', color: '#f8fafc' }}>➕ Registrar Transação</h3>
         <form onSubmit={handleAddAsset} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
           
@@ -479,7 +479,7 @@ function PortfolioDashboard({ session }) {
             value={amount} 
             onChange={(e) => setAmount(e.target.value)} 
             required 
-            style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px' }}
+            style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
           />
 
           <input 
@@ -489,7 +489,7 @@ function PortfolioDashboard({ session }) {
             value={totalSpent} 
             onChange={(e) => setTotalSpent(e.target.value)} 
             required 
-            style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px' }}
+            style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
           />
 
           <input 
@@ -497,7 +497,7 @@ function PortfolioDashboard({ session }) {
             value={txDate} 
             onChange={(e) => setTxDate(e.target.value)} 
             required 
-            style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px' }}
+            style={{ padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
           />
 
           <button type="submit" style={{ padding: '10px', background: txType === 'buy' ? '#10b981' : '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>
@@ -507,7 +507,7 @@ function PortfolioDashboard({ session }) {
       </div>
 
       {/* Calendário de Transações */}
-      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px' }}>
+      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
         <h3 style={{ margin: '0 0 6px 0', fontSize: '15px', color: '#f8fafc' }}>📅 Operações por Data</h3>
         <p style={{ margin: '0 0 12px 0', color: '#94a3b8', fontSize: '12px' }}>
           Clique nos dias registrados para ver o histórico:
@@ -557,8 +557,8 @@ function PortfolioDashboard({ session }) {
         )}
       </div>
 
-      {/* Tabela de Ativos com Rolagem */}
-      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', overflow: 'hidden' }}>
+      {/* Tabela com Isolação de Scroll Horizontal */}
+      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', width: '100%', boxSizing: 'border-box' }}>
         <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#f8fafc' }}>💼 Meus Ativos ({currency})</h3>
         
         {fetchingPrices && portfolio.length > 0 ? (
@@ -567,7 +567,7 @@ function PortfolioDashboard({ session }) {
           <p style={{ textAlign: 'center', color: '#64748b', padding: '16px 0', fontSize: '13px' }}>Nenhuma moeda cadastrada.</p>
         ) : (
           <div style={{ width: '100%', overflowX: 'auto' }}>
-            <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <table style={{ width: '100%', minWidth: '550px', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>
                   <th style={{ padding: '8px' }}>Ativo</th>
