@@ -25,7 +25,7 @@ export default function App() {
 
   return (
     <div style={{ width: '100%', minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', justifyContent: 'center' }}>
-      {!session ? <AuthScreen /> : <PortfolioDashboard session={session} />}
+      {!session ? <AuthScreen /> : <MainDashboard session={session} />}
     </div>
   );
 }
@@ -87,21 +87,105 @@ function AuthScreen() {
   );
 }
 
-// --- DASHBOARD PRINCIPAL ---
-function PortfolioDashboard({ session }) {
+// --- DASHBOARD PRINCIPAL COM ABAS ---
+function MainDashboard({ session }) {
+  const [activeTab, setActiveTab] = useState('portfolio');
+  const [currency, setCurrency] = useState('BRL');
+
+  return (
+    <div style={{ width: '100%', maxWidth: '850px', padding: '20px 16px 40px 16px', boxSizing: 'border-box' }}>
+      
+      {/* Header */}
+      <header style={{ width: '100%', marginBottom: '16px', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <h1 style={{ margin: 0, fontSize: '20px', color: '#f8fafc', fontWeight: '800' }}>
+            Crypto Tracker 🚀
+          </h1>
+
+          <button 
+            onClick={() => supabase.auth.signOut()} 
+            style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #334155', background: '#1e293b', color: '#94a3b8', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}
+          >
+            Sair
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+          {/* Navegação por Abas */}
+          <div style={{ display: 'flex', gap: '8px', background: '#1e293b', padding: '4px', borderRadius: '10px', border: '1px solid #334155' }}>
+            <button
+              onClick={() => setActiveTab('portfolio')}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                border: 'none',
+                background: activeTab === 'portfolio' ? '#3b82f6' : 'transparent',
+                color: activeTab === 'portfolio' ? '#fff' : '#94a3b8',
+                fontWeight: '700',
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}
+            >
+              💼 Meu Portfólio
+            </button>
+            <button
+              onClick={() => setActiveTab('market')}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                border: 'none',
+                background: activeTab === 'market' ? '#3b82f6' : 'transparent',
+                color: activeTab === 'market' ? '#fff' : '#94a3b8',
+                fontWeight: '700',
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}
+            >
+              🌐 Mercado
+            </button>
+          </div>
+
+          {/* Seletor de Moeda */}
+          <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '2px', display: 'flex', gap: '2px' }}>
+            <button 
+              onClick={() => setCurrency('BRL')}
+              style={{ padding: '6px 10px', borderRadius: '6px', border: 'none', background: currency === 'BRL' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '11px' }}
+            >
+              🇧🇷 BRL
+            </button>
+            <button 
+              onClick={() => setCurrency('USD')}
+              style={{ padding: '6px 10px', borderRadius: '6px', border: 'none', background: currency === 'USD' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '11px' }}
+            >
+              🇺🇸 USD
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Conteúdo da Aba */}
+      {activeTab === 'portfolio' ? (
+        <PortfolioTab session={session} currency={currency} />
+      ) : (
+        <MarketTab session={session} currency={currency} />
+      )}
+
+    </div>
+  );
+}
+
+// --- ABA 1: PORTFÓLIO (VISÃO PESSOAL E DETALHADA) ---
+function PortfolioTab({ session, currency }) {
   const [portfolio, setPortfolio] = useState([]);
   const [prices, setPrices] = useState({});
   const [fetchingPrices, setFetchingPrices] = useState(true);
 
-  // Estado da Moeda Selecionada
-  const [currency, setCurrency] = useState('BRL');
-
-  // Busca
+  // Busca de moedas
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedCoin, setSelectedCoin] = useState(null);
 
-  // Inputs
+  // Formulário de registro
   const [amount, setAmount] = useState('');
   const [totalSpent, setTotalSpent] = useState('');
   const [txType, setTxType] = useState('buy');
@@ -119,7 +203,7 @@ function PortfolioDashboard({ session }) {
     loadPortfolio();
   }, []);
 
-  // Autocomplete
+  // Autocomplete do CoinGecko
   useEffect(() => {
     if (searchQuery.length < 2) {
       setSearchResults([]);
@@ -139,7 +223,7 @@ function PortfolioDashboard({ session }) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Cotações em USD e BRL
+  // Busca cotações atuais
   useEffect(() => {
     if (portfolio.length === 0) {
       setPrices({});
@@ -167,7 +251,7 @@ function PortfolioDashboard({ session }) {
 
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
 
-  // Taxa USD -> BRL
+  // Taxa de conversão USD -> BRL
   const btcBrl = prices['bitcoin']?.brl || 0;
   const btcUsd = prices['bitcoin']?.usd || 1;
   const usdToBrlRate = btcBrl && btcUsd ? btcBrl / btcUsd : 5.0;
@@ -178,7 +262,7 @@ function PortfolioDashboard({ session }) {
     return value < 0 ? `-${currencySymbol} ${formatted}` : `${currencySymbol} ${formatted}`;
   };
 
-  // Lógica de Compra / Venda
+  // Registrar Transação
   const handleAddAsset = async (e) => {
     e.preventDefault();
     if (!selectedCoin || !amount || !totalSpent) return;
@@ -195,52 +279,20 @@ function PortfolioDashboard({ session }) {
       totalSpentUSD = parsedTotalSpent / usdToBrlRate;
     }
 
-    const newUnitPriceUSD = Math.abs(totalSpentUSD / parsedAmount);
-    const existingAsset = portfolio.find(item => item.coin_id === selectedCoin.id);
+    const unitPriceUSD = Math.abs(totalSpentUSD / parsedAmount);
+    const initialHistory = [{ date: txDate, type: txType, amount: parsedAmount, total: parsedTotalSpent, currency }];
 
-    if (existingAsset) {
-      const updatedAmount = existingAsset.amount + parsedAmount;
+    const { error } = await supabase.from('portfolio').insert([{
+      user_id: session.user.id,
+      coin_id: selectedCoin.id,
+      coin_name: selectedCoin.name,
+      coin_symbol: selectedCoin.symbol,
+      amount: parsedAmount,
+      buy_price: unitPriceUSD,
+      history: initialHistory
+    }]);
 
-      if (updatedAmount <= 0) {
-        await supabase.from('portfolio').delete().eq('id', existingAsset.id);
-      } else {
-        const updatedHistory = existingAsset.history ? [...existingAsset.history] : [];
-        updatedHistory.push({ date: txDate, type: txType, amount: Math.abs(parsedAmount), total: parsedTotalSpent, currency });
-
-        const totalPreviousCost = existingAsset.amount * existingAsset.buy_price;
-        const updatedAvgPrice = txType === 'buy' 
-          ? (totalPreviousCost + totalSpentUSD) / updatedAmount 
-          : existingAsset.buy_price;
-
-        await supabase
-          .from('portfolio')
-          .update({
-            amount: updatedAmount,
-            buy_price: updatedAvgPrice,
-            history: updatedHistory
-          })
-          .eq('id', existingAsset.id);
-      }
-      loadPortfolio();
-    } else {
-      if (txType === 'sell') {
-        alert('Você não tem esse ativo no portfólio para vender!');
-        return;
-      }
-
-      const initialHistory = [{ date: txDate, type: txType, amount: parsedAmount, total: parsedTotalSpent, currency }];
-
-      const { error } = await supabase.from('portfolio').insert([{
-        coin_id: selectedCoin.id,
-        coin_name: selectedCoin.name,
-        coin_symbol: selectedCoin.symbol,
-        amount: parsedAmount,
-        buy_price: newUnitPriceUSD,
-        history: initialHistory
-      }]);
-
-      if (!error) loadPortfolio();
-    }
+    if (!error) loadPortfolio();
 
     setAmount('');
     setTotalSpent('');
@@ -263,7 +315,7 @@ function PortfolioDashboard({ session }) {
   const totalPnlUSD = currentValueUSD - totalInvestedUSD;
   const totalPnlPct = totalInvestedUSD > 0 ? (totalPnlUSD / totalInvestedUSD) * 100 : 0;
 
-  // Pie Chart
+  // Gráfico de Alocação
   const pieChartData = portfolio.map((c) => {
     const priceUSD = prices[c.coin_id]?.usd || c.buy_price;
     const value = currency === 'BRL' ? (c.amount * priceUSD) * usdToBrlRate : c.amount * priceUSD;
@@ -273,12 +325,11 @@ function PortfolioDashboard({ session }) {
     };
   });
 
-  // Time Series Chart
+  // Gráfico Temporal
   const timeSeriesData = [6, 5, 4, 3, 2, 1, 0].map((daysAgo) => {
     const date = new Date();
     date.setDate(date.getDate() - daysAgo);
     const dateStr = `${date.getDate()}/${date.getMonth() + 1}`;
-
     const factor = (7 - daysAgo) / 7;
     const estimatedPnlUSD = totalPnlUSD * factor;
     const displayPnl = currency === 'BRL' ? estimatedPnlUSD * usdToBrlRate : estimatedPnlUSD;
@@ -306,54 +357,18 @@ function PortfolioDashboard({ session }) {
   const transactionDates = [...new Set(allTransactions.map(t => t.date))];
 
   return (
-    <div style={{ width: '100%', maxWidth: '800px', padding: '20px 16px 40px 16px', boxSizing: 'border-box' }}>
-      
-      {/* Header com estrutura limpa e sem estouro */}
-      <header style={{ width: '100%', marginBottom: '20px', boxSizing: 'border-box' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-          <h1 style={{ margin: 0, fontSize: '20px', color: '#f8fafc', fontWeight: '800' }}>
-            Crypto Portfolio 🚀
-          </h1>
-
-          <button 
-            onClick={() => supabase.auth.signOut()} 
-            style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #334155', background: '#1e293b', color: '#94a3b8', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}
-          >
-            Sair
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-          <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>Acompanhamento em tempo real</p>
-
-          <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '2px', display: 'flex', gap: '2px' }}>
-            <button 
-              onClick={() => setCurrency('BRL')}
-              style={{ padding: '6px 10px', borderRadius: '6px', border: 'none', background: currency === 'BRL' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '11px' }}
-            >
-              🇧🇷 BRL
-            </button>
-            <button 
-              onClick={() => setCurrency('USD')}
-              style={{ padding: '6px 10px', borderRadius: '6px', border: 'none', background: currency === 'USD' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '11px' }}
-            >
-              🇺🇸 USD
-            </button>
-          </div>
-        </div>
-      </header>
-
+    <>
       {/* Resumo do Patrimônio */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
         <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
-          <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Patrimônio</span>
+          <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Patrimônio Atual</span>
           <h2 style={{ margin: '4px 0 0 0', fontSize: '18px', color: '#f8fafc', fontWeight: '800' }}>
             {formatCurrency(currentValueUSD)}
           </h2>
         </div>
 
         <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
-          <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Lucro / Prejuízo</span>
+          <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Lucro / Prejuízo Total</span>
           <h2 style={{ margin: '4px 0 0 0', fontSize: '17px', color: totalPnlUSD >= 0 ? '#10b981' : '#ef4444', fontWeight: '800' }}>
             {formatCurrency(totalPnlUSD)}
             <span style={{ fontSize: '11px', display: 'block', fontWeight: '600', marginTop: '2px' }}>
@@ -393,7 +408,7 @@ function PortfolioDashboard({ session }) {
 
         <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', boxSizing: 'border-box' }}>
           <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500', display: 'block', marginBottom: '8px' }}>
-            Alocação ({currency})
+            Alocação de Ativos ({currency})
           </span>
           {portfolio.length > 0 ? (
             <div style={{ width: '100%', height: '180px' }}>
@@ -426,9 +441,9 @@ function PortfolioDashboard({ session }) {
         </div>
       </div>
 
-      {/* Formulário */}
+      {/* Formulário de Registro */}
       <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
-        <h3 style={{ margin: '0 0 14px 0', fontSize: '15px', color: '#f8fafc' }}>➕ Registrar Transação</h3>
+        <h3 style={{ margin: '0 0 14px 0', fontSize: '15px', color: '#f8fafc' }}>➕ Registrar Nova Compra / Venda</h3>
         <form onSubmit={handleAddAsset} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
           
           <select 
@@ -443,7 +458,7 @@ function PortfolioDashboard({ session }) {
           <div style={{ position: 'relative' }}>
             <input 
               type="text" 
-              placeholder="Moeda (ex: Bitcoin...)"
+              placeholder="Buscar moeda..."
               value={selectedCoin ? `${selectedCoin.name} (${selectedCoin.symbol.toUpperCase()})` : searchQuery}
               onChange={(e) => {
                 setSelectedCoin(null);
@@ -475,7 +490,7 @@ function PortfolioDashboard({ session }) {
           <input 
             type="number" 
             step="any" 
-            placeholder="Quantidade" 
+            placeholder="Qtd Comprada" 
             value={amount} 
             onChange={(e) => setAmount(e.target.value)} 
             required 
@@ -485,7 +500,7 @@ function PortfolioDashboard({ session }) {
           <input 
             type="number" 
             step="any" 
-            placeholder={`Total (${currency})`} 
+            placeholder={`Total Pago (${currency})`} 
             value={totalSpent} 
             onChange={(e) => setTotalSpent(e.target.value)} 
             required 
@@ -506,7 +521,7 @@ function PortfolioDashboard({ session }) {
         </form>
       </div>
 
-      {/* Calendário de Transações */}
+      {/* Calendário */}
       <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
         <h3 style={{ margin: '0 0 6px 0', fontSize: '15px', color: '#f8fafc' }}>📅 Operações por Data</h3>
         <p style={{ margin: '0 0 12px 0', color: '#94a3b8', fontSize: '12px' }}>
@@ -557,55 +572,87 @@ function PortfolioDashboard({ session }) {
         )}
       </div>
 
-      {/* Tabela com Isolação de Scroll Horizontal */}
+      {/* TABELA DETALHADA: MEUS ATIVOS */}
       <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', width: '100%', boxSizing: 'border-box' }}>
-        <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#f8fafc' }}>💼 Meus Ativos ({currency})</h3>
+        <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#f8fafc' }}>💼 Minhas Compras & Histórico ({currency})</h3>
         
         {fetchingPrices && portfolio.length > 0 ? (
-          <p style={{ color: '#94a3b8', fontSize: '12px' }}>Carregando cotações...</p>
+          <p style={{ color: '#94a3b8', fontSize: '12px' }}>Carregando cotações em tempo real...</p>
         ) : portfolio.length === 0 ? (
-          <p style={{ textAlign: 'center', color: '#64748b', padding: '16px 0', fontSize: '13px' }}>Nenhuma moeda cadastrada.</p>
+          <p style={{ textAlign: 'center', color: '#64748b', padding: '16px 0', fontSize: '13px' }}>Nenhuma moeda cadastrada ainda.</p>
         ) : (
           <div style={{ width: '100%', overflowX: 'auto' }}>
-            <table style={{ width: '100%', minWidth: '550px', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>
                   <th style={{ padding: '8px' }}>Ativo</th>
+                  <th style={{ padding: '8px' }}>Data Compra</th>
                   <th style={{ padding: '8px' }}>Qtd</th>
-                  <th style={{ padding: '8px' }}>P. Médio</th>
-                  <th style={{ padding: '8px' }}>P. Atual</th>
-                  <th style={{ padding: '8px' }}>24h</th>
-                  <th style={{ padding: '8px' }}>P/L Total</th>
+                  <th style={{ padding: '8px' }}>Preço na Compra</th>
+                  <th style={{ padding: '8px' }}>Preço Hoje</th>
+                  <th style={{ padding: '8px' }}>Total Pago</th>
+                  <th style={{ padding: '8px' }}>Valor Hoje</th>
+                  <th style={{ padding: '8px' }}>Profit / Loss</th>
                   <th style={{ padding: '8px', textAlign: 'right' }}>Ação</th>
                 </tr>
               </thead>
               <tbody>
                 {portfolio.map((item) => {
                   const currentPriceUSD = prices[item.coin_id]?.usd || 0;
-                  const change24h = prices[item.coin_id]?.usd_24h_change || 0;
-                  const itemPnlUSD = (currentPriceUSD - item.buy_price) * item.amount;
+                  
+                  // Preços convertidos
+                  const buyUnitPrice = currency === 'BRL' ? item.buy_price * usdToBrlRate : item.buy_price;
+                  const currentUnitPrice = currency === 'BRL' ? currentPriceUSD * usdToBrlRate : currentPriceUSD;
 
-                  const buyPriceDisplay = currency === 'BRL' ? item.buy_price * usdToBrlRate : item.buy_price;
-                  const currentPriceDisplay = currency === 'BRL' ? currentPriceUSD * usdToBrlRate : currentPriceUSD;
+                  const totalPaid = buyUnitPrice * item.amount;
+                  const totalCurrentValue = currentUnitPrice * item.amount;
+
+                  // Profit / Loss
+                  const itemPnlUSD = (currentPriceUSD - item.buy_price) * item.amount;
+                  const itemPnlPct = item.buy_price > 0 ? ((currentPriceUSD - item.buy_price) / item.buy_price) * 100 : 0;
+
+                  // Data da compra
+                  const purchaseDate = item.history && item.history[0]?.date 
+                    ? item.history[0].date.split('-').reverse().join('/') 
+                    : 'N/A';
 
                   return (
                     <tr key={item.id} style={{ borderBottom: '1px solid #334155', color: '#f8fafc', fontSize: '12px' }}>
                       <td style={{ padding: '10px 8px', fontWeight: '600' }}>
                         {item.coin_name} <span style={{ color: '#64748b', fontSize: '10px' }}>({item.coin_symbol.toUpperCase()})</span>
                       </td>
-                      <td style={{ padding: '10px 8px' }}>{item.amount}</td>
+                      
+                      <td style={{ padding: '10px 8px', color: '#94a3b8', fontSize: '11px' }}>
+                        📅 {purchaseDate}
+                      </td>
+
+                      <td style={{ padding: '10px 8px', fontWeight: '500' }}>
+                        {item.amount}
+                      </td>
+
                       <td style={{ padding: '10px 8px', color: '#cbd5e1' }}>
-                        {currencySymbol} {buyPriceDisplay.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                        {currencySymbol} {buyUnitPrice.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                       </td>
+
+                      <td style={{ padding: '10px 8px', fontWeight: '700', color: '#38bdf8' }}>
+                        {currencySymbol} {currentUnitPrice.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                      </td>
+
+                      <td style={{ padding: '10px 8px', color: '#cbd5e1' }}>
+                        {currencySymbol} {totalPaid.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+
                       <td style={{ padding: '10px 8px', fontWeight: '600' }}>
-                        {currencySymbol} {currentPriceDisplay.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                        {currencySymbol} {totalCurrentValue.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
-                      <td style={{ padding: '10px 8px', color: change24h >= 0 ? '#10b981' : '#ef4444', fontWeight: '600' }}>
-                        {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
-                      </td>
-                      <td style={{ padding: '10px 8px', color: itemPnlUSD >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>
+
+                      <td style={{ padding: '10px 8px', fontWeight: '700', color: itemPnlUSD >= 0 ? '#10b981' : '#ef4444' }}>
                         {formatCurrency(itemPnlUSD)}
+                        <span style={{ fontSize: '10px', display: 'block', fontWeight: '600' }}>
+                          ({itemPnlPct >= 0 ? '+' : ''}{itemPnlPct.toFixed(2)}%)
+                        </span>
                       </td>
+
                       <td style={{ padding: '10px 8px', textAlign: 'right' }}>
                         <button 
                           onClick={() => handleDeleteAsset(item.id)} 
@@ -622,7 +669,169 @@ function PortfolioDashboard({ session }) {
           </div>
         )}
       </div>
+    </>
+  );
+}
 
+// --- ABA 2: MERCADO (FAVORITOS SALVOS NO SUPABASE) ---
+function MarketTab({ session, currency }) {
+  const [marketCoins, setMarketCoins] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [favorites, setFavorites] = useState([]);
+
+  const currencySymbol = currency === 'BRL' ? 'R$' : '$';
+  const vsCurrency = currency.toLowerCase();
+
+  // Carregar Favoritos do Supabase
+  const loadFavorites = async () => {
+    const { data, error } = await supabase.from('favorites').select('coin_id');
+    if (!error && data) {
+      setFavorites(data.map(item => item.coin_id));
+    }
+  };
+
+  useEffect(() => {
+    loadFavorites();
+  }, []);
+
+  // Carregar Dados do Mercado
+  useEffect(() => {
+    const fetchMarketData = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(
+          `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${vsCurrency}&order=market_cap_desc&per_page=25&page=1&sparkline=false`
+        );
+        const data = await res.json();
+        setMarketCoins(data || []);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMarketData();
+  }, [vsCurrency]);
+
+  // Alternar Favorito no Supabase
+  const toggleFavorite = async (coinId) => {
+    const isFav = favorites.includes(coinId);
+
+    if (isFav) {
+      // Remove do Supabase
+      const { error } = await supabase
+        .from('favorites')
+        .delete()
+        .eq('user_id', session.user.id)
+        .eq('coin_id', coinId);
+
+      if (!error) {
+        setFavorites(favorites.filter(id => id !== coinId));
+      }
+    } else {
+      // Adiciona no Supabase
+      const { error } = await supabase
+        .from('favorites')
+        .insert([{ user_id: session.user.id, coin_id: coinId }]);
+
+      if (!error) {
+        setFavorites([...favorites, coinId]);
+      }
+    }
+  };
+
+  // Ordena para colocar favoritos no topo
+  const sortedCoins = [...marketCoins].sort((a, b) => {
+    const aFav = favorites.includes(a.id);
+    const bFav = favorites.includes(b.id);
+    if (aFav && !bFav) return -1;
+    if (!aFav && bFav) return 1;
+    return a.market_cap_rank - b.market_cap_rank;
+  });
+
+  return (
+    <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', width: '100%', boxSizing: 'border-box' }}>
+      <div style={{ marginBottom: '14px' }}>
+        <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#f8fafc' }}>🌐 Principais Criptomoedas</h3>
+        <p style={{ margin: 0, color: '#94a3b8', fontSize: '12px' }}>
+          Clique na estrela ⭐ para favoritar a moeda. Seus favoritos são salvos no Supabase!
+        </p>
+      </div>
+
+      {loading ? (
+        <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center', padding: '20px 0' }}>Carregando mercado...</p>
+      ) : (
+        <div style={{ width: '100%', overflowX: 'auto' }}>
+          <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>
+                <th style={{ padding: '8px', width: '30px' }}>Fav</th>
+                <th style={{ padding: '8px' }}>Moeda</th>
+                <th style={{ padding: '8px' }}>Preço</th>
+                <th style={{ padding: '8px' }}>24h %</th>
+                <th style={{ padding: '8px' }}>Máx 24h</th>
+                <th style={{ padding: '8px' }}>Mín 24h</th>
+                <th style={{ padding: '8px', textAlign: 'right' }}>Cap. Mercado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedCoins.map((coin) => {
+                const isFav = favorites.includes(coin.id);
+
+                return (
+                  <tr 
+                    key={coin.id} 
+                    style={{ 
+                      borderBottom: '1px solid #334155', 
+                      color: '#f8fafc', 
+                      fontSize: '12px',
+                      background: isFav ? 'rgba(59, 130, 246, 0.05)' : 'transparent' 
+                    }}
+                  >
+                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                      <button 
+                        onClick={() => toggleFavorite(coin.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: 0 }}
+                      >
+                        {isFav ? '⭐' : '☆'}
+                      </button>
+                    </td>
+
+                    <td style={{ padding: '10px 8px', fontWeight: '600' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <img src={coin.image} alt={coin.name} width="18" height="18" />
+                        <span>{coin.name}</span>
+                        <span style={{ color: '#64748b', fontSize: '10px' }}>{coin.symbol.toUpperCase()}</span>
+                      </div>
+                    </td>
+
+                    <td style={{ padding: '10px 8px', fontWeight: '700' }}>
+                      {currencySymbol} {coin.current_price?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2 })}
+                    </td>
+
+                    <td style={{ padding: '10px 8px', color: coin.price_change_percentage_24h >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>
+                      {coin.price_change_percentage_24h >= 0 ? '+' : ''}{coin.price_change_percentage_24h?.toFixed(2)}%
+                    </td>
+
+                    <td style={{ padding: '10px 8px', color: '#cbd5e1' }}>
+                      {currencySymbol} {coin.high_24h?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2 })}
+                    </td>
+
+                    <td style={{ padding: '10px 8px', color: '#cbd5e1' }}>
+                      {currencySymbol} {coin.low_24h?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2 })}
+                    </td>
+
+                    <td style={{ padding: '10px 8px', textAlign: 'right', color: '#94a3b8' }}>
+                      {currencySymbol} {coin.market_cap?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US')}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
