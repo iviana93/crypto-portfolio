@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+
+const COLORS = ['#F7931A', '#627EEA', '#14F195', '#375BD2', '#E84142', '#F3BA2F', '#8C8C8C'];
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -18,16 +21,16 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (loading) return <div style={{ padding: '20px', textAlign: 'center' }}>Carregando...</div>;
+  if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: '#f8fafc', backgroundColor: '#0f172a', minHeight: '100vh' }}>Carregando dashboard...</div>;
 
   return (
-    <div style={{ fontFamily: 'sans-serif', backgroundColor: '#f8fafc', minHeight: '100vh', padding: '20px' }}>
+    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh', padding: '24px' }}>
       {!session ? <AuthScreen /> : <PortfolioDashboard session={session} />}
     </div>
   );
 }
 
-// --- TELA DE AUTENTICAÇÃO ---
+// --- TELA DE LOGIN / CADASTRO ---
 function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,7 +43,7 @@ function AuthScreen() {
     if (isSignUp) {
       const { error } = await supabase.auth.signUp({ email, password });
       if (error) setMsg(error.message);
-      else setMsg('Conta criada! Faça login.');
+      else setMsg('Conta criada com sucesso!');
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) setMsg(error.message);
@@ -48,35 +51,35 @@ function AuthScreen() {
   };
 
   return (
-    <div style={{ maxWidth: '400px', margin: '80px auto', background: '#fff', padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-      <h2 style={{ marginTop: 0 }}>{isSignUp ? 'Criar Conta' : 'Entrar no Crypto Tracker'}</h2>
-      <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <input
-          type="email"
-          placeholder="Seu e-mail"
-          value={email}
+    <div style={{ maxWidth: '400px', margin: '80px auto', background: '#1e293b', border: '1px solid #334155', padding: '32px', borderRadius: '16px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)' }}>
+      <h2 style={{ marginTop: 0, color: '#f8fafc', fontSize: '22px' }}>{isSignUp ? 'Criar Conta' : 'Entrar no Crypto Tracker'}</h2>
+      <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <input 
+          type="email" 
+          placeholder="Seu e-mail" 
+          value={email} 
           onChange={(e) => setEmail(e.target.value)}
-          required
-          style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
+          required 
+          style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px' }}
         />
-        <input
-          type="password"
-          placeholder="Sua senha"
-          value={password}
+        <input 
+          type="password" 
+          placeholder="Sua senha" 
+          value={password} 
           onChange={(e) => setPassword(e.target.value)}
-          required
-          style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
+          required 
+          style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px' }}
         />
-        <button type="submit" style={{ padding: '10px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+        <button type="submit" style={{ padding: '12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}>
           {isSignUp ? 'Cadastrar' : 'Entrar'}
         </button>
       </form>
 
-      {msg && <p style={{ color: '#dc2626', marginTop: '12px', fontSize: '14px' }}>{msg}</p>}
+      {msg && <p style={{ color: '#ef4444', marginTop: '16px', fontSize: '14px' }}>{msg}</p>}
 
-      <p style={{ marginTop: '20px', fontSize: '14px', textAlign: 'center' }}>
+      <p style={{ marginTop: '24px', fontSize: '14px', textAlign: 'center', color: '#94a3b8' }}>
         {isSignUp ? 'Já tem conta?' : 'Ainda não tem conta?'}{' '}
-        <button onClick={() => setIsSignUp(!isSignUp)} style={{ color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+        <button onClick={() => setIsSignUp(!isSignUp)} style={{ color: '#60a5fa', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
           {isSignUp ? 'Entrar' : 'Cadastrar-se'}
         </button>
       </p>
@@ -84,13 +87,13 @@ function AuthScreen() {
   );
 }
 
-// --- PAINEL DO PORTFÓLIO ---
+// --- DASHBOARD PRINCIPAL ---
 function PortfolioDashboard({ session }) {
   const [portfolio, setPortfolio] = useState([]);
   const [prices, setPrices] = useState({});
   const [fetchingPrices, setFetchingPrices] = useState(true);
 
-  // Estados para Busca Dinâmica de Moedas via CoinGecko
+  // Busca
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedCoin, setSelectedCoin] = useState(null);
@@ -100,18 +103,16 @@ function PortfolioDashboard({ session }) {
   const [amount, setAmount] = useState('');
   const [buyPrice, setBuyPrice] = useState('');
 
-  // 1. Carregar portfólio do Supabase
   const loadPortfolio = async () => {
     const { data, error } = await supabase.from('portfolio').select('*');
-    if (error) console.error(error);
-    else setPortfolio(data || []);
+    if (!error) setPortfolio(data || []);
   };
 
   useEffect(() => {
     loadPortfolio();
   }, []);
 
-  // 2. Autocomplete da CoinGecko ao digitar
+  // Busca CoinGecko
   useEffect(() => {
     if (searchQuery.length < 2) {
       setSearchResults([]);
@@ -125,7 +126,7 @@ function PortfolioDashboard({ session }) {
         const data = await res.json();
         setSearchResults(data.coins?.slice(0, 5) || []);
       } catch (err) {
-        console.error("Erro na busca de moedas:", err);
+        console.error(err);
       } finally {
         setIsSearching(false);
       }
@@ -134,7 +135,7 @@ function PortfolioDashboard({ session }) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // 3. Atualizar Cotações das moedas salvas
+  // Preços em tempo real
   useEffect(() => {
     if (portfolio.length === 0) {
       setPrices({});
@@ -149,28 +150,33 @@ function PortfolioDashboard({ session }) {
         const data = await res.json();
         setPrices(data);
       } catch (err) {
-        console.error("Erro ao carregar cotações:", err);
+        console.error(err);
       } finally {
         setFetchingPrices(false);
       }
     };
 
     fetchPrices();
-    const interval = setInterval(fetchPrices, 60000); // Atualiza a cada 1 minuto
+    const interval = setInterval(fetchPrices, 60000);
     return () => clearInterval(interval);
   }, [portfolio]);
 
-  // Adicionar Ativo
   const handleAddAsset = async (e) => {
     e.preventDefault();
     if (!selectedCoin || !amount || !buyPrice) return;
+
+    const parsedAmount = parseFloat(amount);
+    const parsedTotalOrPrice = parseFloat(buyPrice);
+    
+    // Se o preço pago for maior que 200, assume que o usuário digitou o valor total investido e calcula o preço unitário
+    const unitPrice = parsedTotalOrPrice > 200 ? parsedTotalOrPrice / parsedAmount : parsedTotalOrPrice;
 
     const { error } = await supabase.from('portfolio').insert([{
       coin_id: selectedCoin.id,
       coin_name: selectedCoin.name,
       coin_symbol: selectedCoin.symbol,
-      amount: parseFloat(amount),
-      buy_price: parseFloat(buyPrice) / parseFloat(amount)
+      amount: parsedAmount,
+      buy_price: unitPrice
     }]);
 
     if (!error) {
@@ -183,13 +189,12 @@ function PortfolioDashboard({ session }) {
     }
   };
 
-  // Remover Ativo
   const handleDeleteAsset = async (id) => {
     const { error } = await supabase.from('portfolio').delete().eq('id', id);
     if (!error) loadPortfolio();
   };
 
-  // Cálculos
+  // Cálculos Globais
   const totalInvested = portfolio.reduce((acc, c) => acc + (c.amount * c.buy_price), 0);
   const currentValue = portfolio.reduce((acc, c) => {
     const price = prices[c.coin_id]?.usd || c.buy_price;
@@ -198,112 +203,173 @@ function PortfolioDashboard({ session }) {
   const totalPnl = currentValue - totalInvested;
   const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
 
+  // Dados para o Gráfico de Rosca
+  const chartData = portfolio.map((c) => {
+    const price = prices[c.coin_id]?.usd || c.buy_price;
+    return {
+      name: c.coin_symbol.toUpperCase(),
+      value: c.amount * price
+    };
+  });
+
   return (
-    <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h1 style={{ margin: 0, fontSize: '24px' }}>Meu Portfólio Crypto 🚀</h1>
-        <button onClick={() => supabase.auth.signOut()} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}>
+    <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+      
+      {/* Header */}
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '26px', color: '#f8fafc', fontWeight: '800' }}>Crypto Portfolio 🚀</h1>
+          <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '14px' }}>Acompanhamento em tempo real</p>
+        </div>
+        <button 
+          onClick={() => supabase.auth.signOut()} 
+          style={{ padding: '10px 18px', borderRadius: '8px', border: '1px solid #334155', background: '#1e293b', color: '#f8fafc', cursor: 'pointer', fontWeight: '600' }}
+        >
           Sair
         </button>
       </header>
 
-      {/* Cards de Resumo */}
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
-        <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', flex: 1, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <small style={{ color: '#64748b' }}>Patrimônio Atual</small>
-          <h2 style={{ margin: '8px 0 0 0' }}>${currentValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</h2>
+      {/* Grid Superior: Cards de Resumo + Gráfico */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+        
+        {/* Cards de Métricas */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px', flex: 1 }}>
+            <span style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '500' }}>Patrimônio Total</span>
+            <h2 style={{ margin: '8px 0 0 0', fontSize: '32px', color: '#f8fafc', fontWeight: '800' }}>
+              ${currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </h2>
+          </div>
+
+          <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px', flex: 1 }}>
+            <span style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '500' }}>Lucro / Prejuízo (P/L)</span>
+            <h2 style={{ margin: '8px 0 0 0', fontSize: '32px', color: totalPnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '800' }}>
+              {totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span style={{ fontSize: '18px', marginLeft: '8px', fontWeight: '600' }}>
+                ({totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
+              </span>
+            </h2>
+          </div>
         </div>
-        <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', flex: 1, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <small style={{ color: '#64748b' }}>Lucro / Prejuízo</small>
-          <h2 style={{ margin: '8px 0 0 0', color: totalPnl >= 0 ? '#10B981' : '#EF4444' }}>
-            ${totalPnl.toLocaleString('en-US', { minimumFractionDigits: 2 })} ({totalPnlPct.toFixed(2)}%)
-          </h2>
+
+        {/* Gráfico de Alocação */}
+        <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '20px', borderRadius: '16px', minHeight: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <span style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '500', marginBottom: '12px' }}>Distribuição da Carteira</span>
+          {portfolio.length > 0 ? (
+            <div style={{ width: '100%', height: '180px' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={75}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(value) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    contentStyle={{ background: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff' }}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p style={{ color: '#64748b', fontSize: '14px', textAlign: 'center' }}>Nenhum ativo para exibir gráfico</p>
+          )}
         </div>
+
       </div>
 
-      {/* Form de Nova Compra */}
-      <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-        <h3 style={{ marginTop: 0, marginBottom: '16px' }}>Adicionar Compra</h3>
-        <form onSubmit={handleAddAsset} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-
-          {/* Autocomplete de Moedas */}
-          <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
-            <input
-              type="text"
-              placeholder="Buscar moeda (ex: Bitcoin, SOL, Pepe...)"
+      {/* Formulário de Adicionar Moeda */}
+      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px', marginBottom: '24px' }}>
+        <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#f8fafc' }}>➕ Adicionar Transação</h3>
+        <form onSubmit={handleAddAsset} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', alignItems: 'center' }}>
+          
+          {/* Autocomplete */}
+          <div style={{ position: 'relative' }}>
+            <input 
+              type="text" 
+              placeholder="Moeda (ex: Bitcoin, SOL...)"
               value={selectedCoin ? `${selectedCoin.name} (${selectedCoin.symbol.toUpperCase()})` : searchQuery}
               onChange={(e) => {
                 setSelectedCoin(null);
                 setSearchQuery(e.target.value);
               }}
               required
-              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }}
             />
 
-            {/* Menu Suspenso de Resultados */}
             {searchResults.length > 0 && !selectedCoin && (
-              <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #ccc', borderRadius: '6px', margin: 0, padding: 0, listStyle: 'none', zIndex: 10, boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+              <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', margin: '4px 0 0 0', padding: 0, listStyle: 'none', zIndex: 100, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}>
                 {searchResults.map((coin) => (
-                  <li
-                    key={coin.id}
+                  <li 
+                    key={coin.id} 
                     onClick={() => {
                       setSelectedCoin(coin);
                       setSearchResults([]);
                     }}
-                    style={{ padding: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #eee' }}
+                    style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #334155', color: '#fff' }}
                   >
                     <img src={coin.thumb} alt={coin.name} width="20" height="20" />
-                    <strong>{coin.name}</strong> <span style={{ color: '#64748b' }}>({coin.symbol.toUpperCase()})</span>
+                    <strong>{coin.name}</strong> <span style={{ color: '#94a3b8' }}>({coin.symbol.toUpperCase()})</span>
                   </li>
                 ))}
               </ul>
             )}
-            {isSearching && <small style={{ position: 'absolute', right: '10px', top: '12px', color: '#64748b' }}>Procurando...</small>}
           </div>
 
-          <input
-            type="number"
-            step="any"
-            placeholder="Quantidade"
-            value={amount}
-            onChange={e => setAmount(e.target.value)}
-            required
-            style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '120px' }}
+          <input 
+            type="number" 
+            step="any" 
+            placeholder="Quantidade" 
+            value={amount} 
+            onChange={e => setAmount(e.target.value)} 
+            required 
+            style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px' }}
           />
 
-          <input
-            type="number"
-            step="any"
-            placeholder="Preço Pago (USD)"
-            value={buyPrice}
-            onChange={e => setBuyPrice(e.target.value)}
-            required
-            style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', width: '140px' }}
+          <input 
+            type="number" 
+            step="any" 
+            placeholder="Preço Pago Unitário (USD)" 
+            value={buyPrice} 
+            onChange={e => setBuyPrice(e.target.value)} 
+            required 
+            style={{ padding: '12px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '14px' }}
           />
 
-          <button type="submit" style={{ padding: '10px 20px', background: '#10B981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-            Adicionar
+          <button type="submit" style={{ padding: '12px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
+            Adicionar ao Portfólio
           </button>
         </form>
       </div>
 
       {/* Tabela de Ativos */}
-      <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
+      <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '24px', borderRadius: '16px', overflowX: 'auto' }}>
+        <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#f8fafc' }}>💼 Meus Ativos</h3>
+        
         {fetchingPrices && portfolio.length > 0 ? (
-          <p>Atualizando cotações em tempo real...</p>
+          <p style={{ color: '#94a3b8' }}>Atualizando cotações...</p>
         ) : portfolio.length === 0 ? (
-          <p style={{ textAlign: 'center', color: '#64748b' }}>Nenhum ativo cadastrado ainda.</p>
+          <p style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>Sua carteira está vazia. Adicione uma moeda acima!</p>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
-              <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
-                <th style={{ padding: '8px' }}>Ativo</th>
-                <th style={{ padding: '8px' }}>Qtd</th>
-                <th style={{ padding: '8px' }}>Preço Pago</th>
-                <th style={{ padding: '8px' }}>Preço Atual</th>
-                <th style={{ padding: '8px' }}>24h</th>
-                <th style={{ padding: '8px' }}>P/L Total</th>
-                <th style={{ padding: '8px' }}>Ações</th>
+              <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '13px' }}>
+                <th style={{ padding: '12px 8px' }}>Ativo</th>
+                <th style={{ padding: '12px 8px' }}>Qtd</th>
+                <th style={{ padding: '12px 8px' }}>Preço Pago</th>
+                <th style={{ padding: '12px 8px' }}>Preço Atual</th>
+                <th style={{ padding: '12px 8px' }}>24h</th>
+                <th style={{ padding: '12px 8px' }}>P/L Total</th>
+                <th style={{ padding: '12px 8px', textAlign: 'right' }}>Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -313,19 +379,24 @@ function PortfolioDashboard({ session }) {
                 const itemPnl = (currentPrice - item.buy_price) * item.amount;
 
                 return (
-                  <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '12px 8px' }}><strong>{item.coin_name}</strong> ({item.coin_symbol.toUpperCase()})</td>
-                    <td style={{ padding: '12px 8px' }}>{item.amount}</td>
-                    <td style={{ padding: '12px 8px' }}>${item.buy_price.toLocaleString()}</td>
-                    <td style={{ padding: '12px 8px' }}>${currentPrice.toLocaleString()}</td>
-                    <td style={{ padding: '12px 8px', color: change24h >= 0 ? '#10B981' : '#EF4444' }}>
-                      {change24h.toFixed(2)}%
+                  <tr key={item.id} style={{ borderBottom: '1px solid #334155', color: '#f8fafc', fontSize: '14px' }}>
+                    <td style={{ padding: '16px 8px', fontWeight: '600' }}>
+                      {item.coin_name} <span style={{ color: '#64748b', fontSize: '12px', fontWeight: '400' }}>({item.coin_symbol.toUpperCase()})</span>
                     </td>
-                    <td style={{ padding: '12px 8px', color: itemPnl >= 0 ? '#10B981' : '#EF4444' }}>
-                      ${itemPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <td style={{ padding: '16px 8px' }}>{item.amount}</td>
+                    <td style={{ padding: '16px 8px', color: '#cbd5e1' }}>${item.buy_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
+                    <td style={{ padding: '16px 8px', fontWeight: '600' }}>${currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
+                    <td style={{ padding: '16px 8px', color: change24h >= 0 ? '#10b981' : '#ef4444', fontWeight: '600' }}>
+                      {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
                     </td>
-                    <td style={{ padding: '12px 8px' }}>
-                      <button onClick={() => handleDeleteAsset(item.id)} style={{ background: '#EF4444', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>
+                    <td style={{ padding: '16px 8px', color: itemPnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>
+                      {itemPnl >= 0 ? '+' : ''}${itemPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '16px 8px', textAlign: 'right' }}>
+                      <button 
+                        onClick={() => handleDeleteAsset(item.id)} 
+                        style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
+                      >
                         Excluir
                       </button>
                     </td>
@@ -336,6 +407,7 @@ function PortfolioDashboard({ session }) {
           </table>
         )}
       </div>
+
     </div>
   );
 }
