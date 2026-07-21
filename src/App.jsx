@@ -172,6 +172,7 @@ function MainDashboard({ session }) {
 
 // --- ABA 1: PORTFÓLIO ---
 // --- ABA 1: PORTFÓLIO ---
+// --- ABA 1: PORTFÓLIO ---
 function PortfolioTab({ session, currency }) {
   const [portfolio, setPortfolio] = useState([]);
   const [prices, setPrices] = useState({});
@@ -263,12 +264,11 @@ function PortfolioTab({ session, currency }) {
 
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
 
-  // Registrar Transação - CORRIGIDO
+  // Registrar Transação - USANDO buy_price (sem _usd)
   const handleAddAsset = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     
-    // Validações
     if (!selectedCoin) {
       setErrorMsg('❌ Selecione uma moeda');
       return;
@@ -303,20 +303,6 @@ function PortfolioTab({ session, currency }) {
         console.error('Erro ao buscar preço USD:', err);
       }
 
-      // Converter o preço unitário para USD se necessário
-      let buyPriceUSD = unitPrice;
-      if (currency === 'BRL' && prices.usd?.brl) {
-        buyPriceUSD = unitPrice / prices.usd.brl;
-      } else if (currency === 'USD') {
-        buyPriceUSD = unitPrice;
-      }
-
-      // Se não tiver a cotação, usa fallback
-      if (currency === 'BRL' && !prices.usd?.brl) {
-        // Fallback: usar uma cotação aproximada
-        buyPriceUSD = unitPrice / 5.0;
-      }
-
       const initialHistory = [{
         date: txDate,
         type: txType,
@@ -325,24 +311,14 @@ function PortfolioTab({ session, currency }) {
         currency: currency
       }];
 
-      console.log('Dados a serem inseridos:', {
-        user_id: session.user.id,
-        coin_id: selectedCoin.id,
-        coin_name: selectedCoin.name,
-        coin_symbol: selectedCoin.symbol,
-        amount: parsedAmount,
-        buy_price_usd: buyPriceUSD,
-        currency_bought: currency,
-        history: initialHistory
-      });
-
+      // USANDO buy_price (sem _usd) - compatível com seu banco
       const { error } = await supabase.from('portfolio').insert([{
         user_id: session.user.id,
         coin_id: selectedCoin.id,
         coin_name: selectedCoin.name,
         coin_symbol: selectedCoin.symbol,
         amount: parsedAmount,
-        buy_price_usd: buyPriceUSD,
+        buy_price: unitPrice, // Salva na moeda que o usuário escolheu
         currency_bought: currency,
         history: initialHistory
       }]);
@@ -361,7 +337,6 @@ function PortfolioTab({ session, currency }) {
       setSearchResults([]);
       setErrorMsg('✅ Operação registrada com sucesso!');
       
-      // Recarregar portfólio
       loadPortfolio();
       if (selectedCoin) {
         fetchCoinImages([selectedCoin.id]);
@@ -378,40 +353,44 @@ function PortfolioTab({ session, currency }) {
     if (!error) loadPortfolio();
   };
 
-  // Cálculos Globais
-  const totalInvestedUSD = portfolio.reduce((acc, c) => {
+  // Cálculos Globais - USANDO buy_price
+  const totalInvested = portfolio.reduce((acc, c) => {
     const amount = Math.abs(c.amount);
-    return acc + (amount * (c.buy_price_usd || 0));
+    let buyPrice = c.buy_price || 0;
+    
+    // Se a moeda atual for diferente da moeda de compra, converte
+    if (currency !== c.currency_bought && prices.usd?.brl) {
+      if (c.currency_bought === 'BRL' && currency === 'USD') {
+        buyPrice = buyPrice / prices.usd.brl;
+      } else if (c.currency_bought === 'USD' && currency === 'BRL') {
+        buyPrice = buyPrice * prices.usd.brl;
+      }
+    }
+    return acc + (amount * buyPrice);
   }, 0);
 
-  const currentValueUSD = portfolio.reduce((acc, c) => {
+  const currentValue = portfolio.reduce((acc, c) => {
     const amount = Math.abs(c.amount);
-    const currentPriceUSD = prices[c.coin_id]?.usd || 0;
-    return acc + (amount * currentPriceUSD);
+    let currentPrice = 0;
+    if (currency === 'BRL') {
+      currentPrice = prices[c.coin_id]?.brl || 0;
+    } else {
+      currentPrice = prices[c.coin_id]?.usd || 0;
+    }
+    return acc + (amount * currentPrice);
   }, 0);
-
-  // Converter para a moeda selecionada
-  let totalInvested = totalInvestedUSD;
-  let currentValue = currentValueUSD;
-
-  if (currency === 'BRL' && prices.usd?.brl) {
-    const brlRate = prices.usd.brl;
-    totalInvested = totalInvestedUSD * brlRate;
-    currentValue = currentValueUSD * brlRate;
-  }
 
   const totalPnl = currentValue - totalInvested;
   const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
 
   const pieChartData = portfolio.map((c) => {
     const amount = Math.abs(c.amount);
-    const priceUSD = prices[c.coin_id]?.usd || 0;
-    let value = amount * priceUSD;
-    
-    if (currency === 'BRL' && prices.usd?.brl) {
-      value = value * prices.usd.brl;
+    let value = 0;
+    if (currency === 'BRL') {
+      value = amount * (prices[c.coin_id]?.brl || 0);
+    } else {
+      value = amount * (prices[c.coin_id]?.usd || 0);
     }
-    
     return {
       name: c.coin_symbol.toUpperCase(),
       value: value
@@ -701,20 +680,24 @@ function PortfolioTab({ session, currency }) {
                 {portfolio.map((item) => {
                   const amount = Math.abs(item.amount);
 
-                  // Preço de compra em USD
-                  const buyPriceUSD = item.buy_price_usd || 0;
+                  // Preço de compra na moeda que foi comprada
+                  let buyPrice = item.buy_price || 0;
                   
-                  // Preço atual em USD
-                  const currentPriceUSD = prices[item.coin_id]?.usd || 0;
+                  // Se a moeda atual for diferente da moeda de compra, converte
+                  if (currency !== item.currency_bought && prices.usd?.brl) {
+                    if (item.currency_bought === 'BRL' && currency === 'USD') {
+                      buyPrice = buyPrice / prices.usd.brl;
+                    } else if (item.currency_bought === 'USD' && currency === 'BRL') {
+                      buyPrice = buyPrice * prices.usd.brl;
+                    }
+                  }
 
-                  // Converter para a moeda selecionada
-                  let buyPrice = buyPriceUSD;
-                  let currentPrice = currentPriceUSD;
-
-                  if (currency === 'BRL' && prices.usd?.brl) {
-                    const brlRate = prices.usd.brl;
-                    buyPrice = buyPriceUSD * brlRate;
-                    currentPrice = currentPriceUSD * brlRate;
+                  // Preço atual na moeda selecionada
+                  let currentPrice = 0;
+                  if (currency === 'BRL') {
+                    currentPrice = prices[item.coin_id]?.brl || 0;
+                  } else {
+                    currentPrice = prices[item.coin_id]?.usd || 0;
                   }
 
                   const totalPaid = buyPrice * amount;
