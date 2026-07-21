@@ -111,7 +111,6 @@ function MainDashboard({ session }) {
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-          {/* Navegação por Abas */}
           <div style={{ display: 'flex', gap: '8px', background: '#1e293b', padding: '4px', borderRadius: '10px', border: '1px solid #334155' }}>
             <button
               onClick={() => setActiveTab('portfolio')}
@@ -145,7 +144,6 @@ function MainDashboard({ session }) {
             </button>
           </div>
 
-          {/* Seletor de Moeda */}
           <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '2px', display: 'flex', gap: '2px' }}>
             <button
               onClick={() => setCurrency('BRL')}
@@ -163,7 +161,6 @@ function MainDashboard({ session }) {
         </div>
       </header>
 
-      {/* Conteúdo da Aba */}
       {activeTab === 'portfolio' ? (
         <PortfolioTab session={session} currency={currency} />
       ) : (
@@ -178,32 +175,47 @@ function MainDashboard({ session }) {
 function PortfolioTab({ session, currency }) {
   const [portfolio, setPortfolio] = useState([]);
   const [prices, setPrices] = useState({});
+  const [coinImages, setCoinImages] = useState({});
   const [fetchingPrices, setFetchingPrices] = useState(true);
-
-  // Busca de moedas
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedCoin, setSelectedCoin] = useState(null);
-
-  // Formulário de registro
   const [amount, setAmount] = useState('');
   const [totalSpent, setTotalSpent] = useState('');
   const [txType, setTxType] = useState('buy');
   const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
-
-  // Calendário
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
 
   const loadPortfolio = async () => {
     const { data, error } = await supabase.from('portfolio').select('*');
-    if (!error) setPortfolio(data || []);
+    if (!error) {
+      setPortfolio(data || []);
+      // Buscar imagens para as moedas no portfólio
+      if (data && data.length > 0) {
+        fetchCoinImages(data.map(item => item.coin_id));
+      }
+    }
+  };
+
+  const fetchCoinImages = async (coinIds) => {
+    try {
+      const ids = coinIds.join(',');
+      const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&per_page=250`);
+      const data = await res.json();
+      const imageMap = {};
+      data.forEach(coin => {
+        imageMap[coin.id] = coin.image;
+      });
+      setCoinImages(imageMap);
+    } catch (err) {
+      console.error('Erro ao buscar imagens:', err);
+    }
   };
 
   useEffect(() => {
     loadPortfolio();
   }, []);
 
-  // Autocomplete do CoinGecko
   useEffect(() => {
     if (searchQuery.length < 2) {
       setSearchResults([]);
@@ -223,7 +235,6 @@ function PortfolioTab({ session, currency }) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Busca cotações atuais em BRL e USD simultaneamente
   useEffect(() => {
     if (portfolio.length === 0) {
       setPrices({});
@@ -252,7 +263,6 @@ function PortfolioTab({ session, currency }) {
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
   const currKey = currency.toLowerCase();
 
-  // Registrar Transação
   const handleAddAsset = async (e) => {
     e.preventDefault();
     if (!selectedCoin || !amount || !totalSpent) return;
@@ -278,7 +288,11 @@ function PortfolioTab({ session, currency }) {
       history: initialHistory
     }]);
 
-    if (!error) loadPortfolio();
+    if (!error) {
+      loadPortfolio();
+      // Buscar imagem da nova moeda
+      fetchCoinImages([selectedCoin.id]);
+    }
 
     setAmount('');
     setTotalSpent('');
@@ -292,39 +306,43 @@ function PortfolioTab({ session, currency }) {
     if (!error) loadPortfolio();
   };
 
-  // Cálculos Globais
-  const totalInvested = portfolio.reduce((acc, c) => acc + (c.amount * c.buy_price), 0);
-  const currentValue = portfolio.reduce((acc, c) => {
-    const price = prices[c.coin_id]?.[currKey] || c.buy_price;
-    return acc + (c.amount * price);
+  // Cálculos Globais - CORRIGIDO
+  const totalInvested = portfolio.reduce((acc, c) => {
+    // Usar o preço de compra na moeda correta
+    const buyPrice = c.buy_price || 0;
+    return acc + (c.amount * buyPrice);
   }, 0);
+
+  const currentValue = portfolio.reduce((acc, c) => {
+    // Usar o preço atual na moeda selecionada
+    const currentPrice = prices[c.coin_id]?.[currKey] || 0;
+    return acc + (c.amount * currentPrice);
+  }, 0);
+
   const totalPnl = currentValue - totalInvested;
   const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
 
-  // Gráfico de Alocação
   const pieChartData = portfolio.map((c) => {
-    const price = prices[c.coin_id]?.[currKey] || c.buy_price;
+    const price = prices[c.coin_id]?.[currKey] || c.buy_price || 0;
     return {
       name: c.coin_symbol.toUpperCase(),
       value: c.amount * price
     };
   });
 
-  // Gráfico Temporal
+  // Gráfico Temporal melhorado
   const timeSeriesData = [6, 5, 4, 3, 2, 1, 0].map((daysAgo) => {
     const date = new Date();
     date.setDate(date.getDate() - daysAgo);
-    const dateStr = `${date.getDate()}/${date.getMonth() + 1}`;
+    const dateStr = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
     const factor = (7 - daysAgo) / 7;
     const estimatedPnl = totalPnl * factor;
-
     return {
       date: dateStr,
       pnl: parseFloat(estimatedPnl.toFixed(2))
     };
   });
 
-  // Transações Calendário
   const allTransactions = [];
   portfolio.forEach((asset) => {
     if (asset.history && Array.isArray(asset.history)) {
@@ -342,7 +360,6 @@ function PortfolioTab({ session, currency }) {
 
   return (
     <>
-      {/* Resumo do Patrimônio */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
         <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
           <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Patrimônio Atual</span>
@@ -362,7 +379,6 @@ function PortfolioTab({ session, currency }) {
         </div>
       </div>
 
-      {/* Gráficos */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
         <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', boxSizing: 'border-box' }}>
           <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500', display: 'block', marginBottom: '12px' }}>
@@ -425,18 +441,10 @@ function PortfolioTab({ session, currency }) {
         </div>
       </div>
 
-      {/* 🤖 COMPONENTE DE INSIGHTS DA IA */}
-      <AIInsightsCard
-        portfolio={portfolio}
-        prices={prices}
-        currency={currency}
-      />
-
       {/* Formulário de Registro */}
       <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
         <h3 style={{ margin: '0 0 14px 0', fontSize: '15px', color: '#f8fafc' }}>➕ Registrar Nova Compra / Venda</h3>
         <form onSubmit={handleAddAsset} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
-
           <select
             value={txType}
             onChange={e => setTxType(e.target.value)}
@@ -458,7 +466,6 @@ function PortfolioTab({ session, currency }) {
               required
               style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #334155', background: '#0f172a', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
             />
-
             {searchResults.length > 0 && !selectedCoin && (
               <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', margin: '4px 0 0 0', padding: 0, listStyle: 'none', zIndex: 100, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}>
                 {searchResults.map((coin) => (
@@ -555,7 +562,7 @@ function PortfolioTab({ session, currency }) {
                 <li key={idx} style={{ marginBottom: '4px' }}>
                   <span style={{ color: tx.type === 'buy' ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>
                     {tx.type === 'buy' ? 'COMPRA' : 'VENDA'}
-                  </span>: {tx.amount} {tx.coin_symbol.toUpperCase()} por {tx.currency === 'BRL' ? 'R$' : '$'} {tx.total}
+                  </span>: {Math.abs(tx.amount)} {tx.coin_symbol.toUpperCase()} por {tx.currency === 'BRL' ? 'R$' : '$'} {tx.total}
                 </li>
               ))}
             </ul>
@@ -563,7 +570,7 @@ function PortfolioTab({ session, currency }) {
         )}
       </div>
 
-      {/* TABELA DETALHADA: MEUS ATIVOS */}
+      {/* TABELA DETALHADA: MEUS ATIVOS COM ÍCONES */}
       <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', width: '100%', boxSizing: 'border-box' }}>
         <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#f8fafc' }}>💼 Minhas Compras & Histórico ({currency})</h3>
 
@@ -590,7 +597,7 @@ function PortfolioTab({ session, currency }) {
               <tbody>
                 {portfolio.map((item) => {
                   const currentUnitPrice = prices[item.coin_id]?.[currKey] || 0;
-                  const buyUnitPrice = item.buy_price;
+                  const buyUnitPrice = item.buy_price || 0;
 
                   const totalPaid = buyUnitPrice * item.amount;
                   const totalCurrentValue = currentUnitPrice * item.amount;
@@ -602,10 +609,26 @@ function PortfolioTab({ session, currency }) {
                     ? item.history[0].date.split('-').reverse().join('/')
                     : 'N/A';
 
+                  const imageUrl = coinImages[item.coin_id] || '';
+
                   return (
                     <tr key={item.id} style={{ borderBottom: '1px solid #334155', color: '#f8fafc', fontSize: '12px' }}>
                       <td style={{ padding: '10px 8px', fontWeight: '600' }}>
-                        {item.coin_name} <span style={{ color: '#64748b', fontSize: '10px' }}>({item.coin_symbol.toUpperCase()})</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {imageUrl && (
+                            <img
+                              src={imageUrl}
+                              alt={item.coin_name}
+                              style={{ width: '20px', height: '20px', borderRadius: '50%' }}
+                            />
+                          )}
+                          <div>
+                            <span>{item.coin_name}</span>
+                            <span style={{ color: '#64748b', fontSize: '10px', display: 'block' }}>
+                              {item.coin_symbol.toUpperCase()}
+                            </span>
+                          </div>
+                        </div>
                       </td>
 
                       <td style={{ padding: '10px 8px', color: '#94a3b8', fontSize: '11px' }}>
@@ -656,138 +679,6 @@ function PortfolioTab({ session, currency }) {
         )}
       </div>
     </>
-  );
-}
-
-// --- CARD DE INSIGHTS DA IA ---
-function AIInsightsCard({ portfolio, prices, currency }) {
-  const [loading, setLoading] = useState(false);
-  const [insight, setInsight] = useState(null);
-  const [error, setError] = useState('');
-
-  const currencySymbol = currency === 'BRL' ? 'R$' : '$';
-  const currKey = currency.toLowerCase();
-
-  const generateInsights = async () => {
-    if (!portfolio || portfolio.length === 0) {
-      setError('Adicione pelo menos um ativo ao portfólio para gerar insights.');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    // Preparação do contexto para enviar para a IA
-    const portfolioSummary = portfolio.map((item) => {
-      const currentPrice = prices[item.coin_id]?.[currKey] || item.buy_price;
-      const totalPaid = item.amount * item.buy_price;
-      const currentValue = item.amount * currentPrice;
-      const pnlPct = item.buy_price > 0 ? ((currentPrice - item.buy_price) / item.buy_price) * 100 : 0;
-
-      return {
-        moeda: item.coin_name,
-        simbolo: item.coin_symbol.toUpperCase(),
-        quantidade: item.amount,
-        precoCompra: `${currencySymbol} ${item.buy_price}`,
-        precoAtual: `${currencySymbol} ${currentPrice}`,
-        valorTotalAtual: `${currencySymbol} ${currentValue.toFixed(2)}`,
-        lucroPrejuizoPct: `${pnlPct.toFixed(2)}%`
-      };
-    });
-
-    const promptText = `
-      Você é um analista sênior de criptomoedas especialista em gestão de risco e portfólio.
-      Analise o seguinte portfólio do usuário (Moeda de exibição: ${currency}):
-
-      ${JSON.stringify(portfolioSummary, null, 2)}
-
-      Forneça uma análise concisa, direta e objetiva em Português contendo exatamente estes 3 tópicos:
-      1. 🎯 **Diagnóstico de Risco & Alocação**: Avalie a diversificação do portfólio.
-      2. 💡 **O que fazer agora**: Sugira se o momento é de manter (holding), preço médio (DCA) ou rebalanceamento, justificando com base no P&L.
-      3. ⚠️ **Pontos de Atenção**: Destaque o principal ponto de risco desse portfólio no curto prazo.
-
-      Mantenha um tom profissional, direto ao ponto e amigável.
-    `;
-
-    try {
-      // ✅ Como deve ficar no Vite
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: promptText }] }]
-          })
-        }
-      );
-
-      const data = await response.json();
-
-      if (data.error) {
-        throw new Error(data.error.message || 'Erro ao comunicar com a API do Gemini.');
-      }
-
-      const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      setInsight(textResponse);
-    } catch (err) {
-      console.error(err);
-      setError('Erro ao gerar insights. Verifique sua chave de API do Gemini.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-        <div>
-          <h3 style={{ margin: '0 0 4px 0', fontSize: '15px', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            ✨ AI Portfolio Copilot
-          </h3>
-          <p style={{ margin: 0, color: '#94a3b8', fontSize: '12px' }}>
-            Análise e recomendações personalizadas geradas por IA.
-          </p>
-        </div>
-
-        <button
-          onClick={generateInsights}
-          disabled={loading}
-          style={{
-            padding: '8px 14px',
-            background: loading ? '#475569' : 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: loading ? 'not-allowed' : 'pointer',
-            fontWeight: '700',
-            fontSize: '12px',
-            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.25)'
-          }}
-        >
-          {loading ? 'Analisando...' : '⚡ Gerar Insights'}
-        </button>
-      </div>
-
-      {error && (
-        <p style={{ color: '#ef4444', fontSize: '12px', background: 'rgba(239, 68, 68, 0.1)', padding: '10px', borderRadius: '8px', margin: '12px 0 0 0' }}>
-          {error}
-        </p>
-      )}
-
-      {insight && (
-        <div style={{ marginTop: '14px', padding: '14px', background: '#0f172a', borderRadius: '12px', border: '1px solid #334155', color: '#cbd5e1', fontSize: '13px', lineHeight: '1.6', whiteSpace: 'pre-line' }}>
-          {insight}
-
-          <span style={{ display: 'block', marginTop: '12px', fontSize: '10px', color: '#64748b', fontStyle: 'italic' }}>
-            ⚠️ Os insights são gerados por Inteligência Artificial e têm caráter estritamente informativo, não constituindo recomendação de investimento.
-          </span>
-        </div>
-      )}
-    </div>
   );
 }
 
