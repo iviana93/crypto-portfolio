@@ -95,7 +95,6 @@ function MainDashboard({ session }) {
   return (
     <div style={{ width: '100%', maxWidth: '850px', padding: '20px 16px 40px 16px', boxSizing: 'border-box' }}>
 
-      {/* Header */}
       <header style={{ width: '100%', marginBottom: '16px', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <h1 style={{ margin: 0, fontSize: '20px', color: '#f8fafc', fontWeight: '800' }}>
@@ -190,7 +189,6 @@ function PortfolioTab({ session, currency }) {
     const { data, error } = await supabase.from('portfolio').select('*');
     if (!error) {
       setPortfolio(data || []);
-      // Buscar imagens para as moedas no portfólio
       if (data && data.length > 0) {
         fetchCoinImages(data.map(item => item.coin_id));
       }
@@ -235,6 +233,7 @@ function PortfolioTab({ session, currency }) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Buscar preços em USD e BRL
   useEffect(() => {
     if (portfolio.length === 0) {
       setPrices({});
@@ -263,6 +262,7 @@ function PortfolioTab({ session, currency }) {
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
   const currKey = currency.toLowerCase();
 
+  // Registrar Transação - SALVAR EM USD
   const handleAddAsset = async (e) => {
     e.preventDefault();
     if (!selectedCoin || !amount || !totalSpent) return;
@@ -274,8 +274,42 @@ function PortfolioTab({ session, currency }) {
       parsedAmount = -parsedAmount;
     }
 
-    const unitPrice = Math.abs(parsedTotalSpent / parsedAmount);
-    const initialHistory = [{ date: txDate, type: txType, amount: parsedAmount, total: parsedTotalSpent, currency }];
+    // Buscar preço atual em USD para converter
+    let usdPrice = 1;
+    try {
+      const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${selectedCoin.id}&vs_currencies=usd`);
+      const data = await res.json();
+      usdPrice = data[selectedCoin.id]?.usd || 1;
+    } catch (err) {
+      console.error('Erro ao buscar preço USD:', err);
+    }
+
+    // Converter o total pago para USD
+    let totalSpentUSD = parsedTotalSpent;
+    if (currency === 'BRL') {
+      // Se estiver em BRL, converter para USD usando a cotação do dia
+      try {
+        const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=usd&vs_currencies=brl');
+        const data = await res.json();
+        const brlRate = data.usd?.brl || 5.0;
+        totalSpentUSD = parsedTotalSpent / brlRate;
+      } catch (err) {
+        console.error('Erro ao buscar cotação BRL/USD:', err);
+        totalSpentUSD = parsedTotalSpent / 5.0; // Fallback
+      }
+    }
+
+    // Calcular preço unitário em USD
+    const unitPriceUSD = Math.abs(totalSpentUSD / parsedAmount);
+    
+    const initialHistory = [{ 
+      date: txDate, 
+      type: txType, 
+      amount: parsedAmount, 
+      total: parsedTotalSpent, 
+      totalUSD: totalSpentUSD,
+      currency 
+    }];
 
     const { error } = await supabase.from('portfolio').insert([{
       user_id: session.user.id,
@@ -283,14 +317,13 @@ function PortfolioTab({ session, currency }) {
       coin_name: selectedCoin.name,
       coin_symbol: selectedCoin.symbol,
       amount: parsedAmount,
-      buy_price: unitPrice,
+      buy_price_usd: unitPriceUSD, // Salvar sempre em USD
       currency_bought: currency,
       history: initialHistory
     }]);
 
     if (!error) {
       loadPortfolio();
-      // Buscar imagem da nova moeda
       fetchCoinImages([selectedCoin.id]);
     }
 
@@ -306,31 +339,43 @@ function PortfolioTab({ session, currency }) {
     if (!error) loadPortfolio();
   };
 
-  // Cálculos Globais - CORRIGIDO
-  const totalInvested = portfolio.reduce((acc, c) => {
-    // Usar o preço de compra na moeda correta
-    const buyPrice = c.buy_price || 0;
-    return acc + (c.amount * buyPrice);
+  // Cálculos Globais CORRIGIDOS
+  const totalInvestedUSD = portfolio.reduce((acc, c) => {
+    return acc + (c.amount * (c.buy_price_usd || 0));
   }, 0);
 
-  const currentValue = portfolio.reduce((acc, c) => {
-    // Usar o preço atual na moeda selecionada
-    const currentPrice = prices[c.coin_id]?.[currKey] || 0;
-    return acc + (c.amount * currentPrice);
+  const currentValueUSD = portfolio.reduce((acc, c) => {
+    const currentPriceUSD = prices[c.coin_id]?.usd || 0;
+    return acc + (c.amount * currentPriceUSD);
   }, 0);
+
+  // Converter para a moeda selecionada
+  let totalInvested = totalInvestedUSD;
+  let currentValue = currentValueUSD;
+
+  if (currency === 'BRL' && prices.usd?.brl) {
+    const brlRate = prices.usd.brl;
+    totalInvested = totalInvestedUSD * brlRate;
+    currentValue = currentValueUSD * brlRate;
+  }
 
   const totalPnl = currentValue - totalInvested;
   const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
 
   const pieChartData = portfolio.map((c) => {
-    const price = prices[c.coin_id]?.[currKey] || c.buy_price || 0;
+    const priceUSD = prices[c.coin_id]?.usd || 0;
+    let value = c.amount * priceUSD;
+    
+    if (currency === 'BRL' && prices.usd?.brl) {
+      value = value * prices.usd.brl;
+    }
+    
     return {
       name: c.coin_symbol.toUpperCase(),
-      value: c.amount * price
+      value: value
     };
   });
 
-  // Gráfico Temporal melhorado
   const timeSeriesData = [6, 5, 4, 3, 2, 1, 0].map((daysAgo) => {
     const date = new Date();
     date.setDate(date.getDate() - daysAgo);
@@ -570,7 +615,7 @@ function PortfolioTab({ session, currency }) {
         )}
       </div>
 
-      {/* TABELA DETALHADA: MEUS ATIVOS COM ÍCONES */}
+      {/* TABELA DETALHADA */}
       <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '16px', borderRadius: '16px', width: '100%', boxSizing: 'border-box' }}>
         <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#f8fafc' }}>💼 Minhas Compras & Histórico ({currency})</h3>
 
@@ -596,14 +641,24 @@ function PortfolioTab({ session, currency }) {
               </thead>
               <tbody>
                 {portfolio.map((item) => {
-                  const currentUnitPrice = prices[item.coin_id]?.[currKey] || 0;
-                  const buyUnitPrice = item.buy_price || 0;
+                  // Preços em USD
+                  const currentPriceUSD = prices[item.coin_id]?.usd || 0;
+                  const buyPriceUSD = item.buy_price_usd || 0;
+                  
+                  // Converter para a moeda selecionada
+                  let currentPrice = currentPriceUSD;
+                  let buyPrice = buyPriceUSD;
+                  
+                  if (currency === 'BRL' && prices.usd?.brl) {
+                    const brlRate = prices.usd.brl;
+                    currentPrice = currentPriceUSD * brlRate;
+                    buyPrice = buyPriceUSD * brlRate;
+                  }
 
-                  const totalPaid = buyUnitPrice * item.amount;
-                  const totalCurrentValue = currentUnitPrice * item.amount;
-
+                  const totalPaid = buyPrice * item.amount;
+                  const totalCurrentValue = currentPrice * item.amount;
                   const itemPnl = totalCurrentValue - totalPaid;
-                  const itemPnlPct = buyUnitPrice > 0 ? ((currentUnitPrice - buyUnitPrice) / buyUnitPrice) * 100 : 0;
+                  const itemPnlPct = buyPrice > 0 ? ((currentPrice - buyPrice) / buyPrice) * 100 : 0;
 
                   const purchaseDate = item.history && item.history[0]?.date
                     ? item.history[0].date.split('-').reverse().join('/')
@@ -640,11 +695,11 @@ function PortfolioTab({ session, currency }) {
                       </td>
 
                       <td style={{ padding: '10px 8px', color: '#cbd5e1' }}>
-                        {currencySymbol} {buyUnitPrice.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                        {currencySymbol} {buyPrice.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                       </td>
 
                       <td style={{ padding: '10px 8px', fontWeight: '700', color: '#38bdf8' }}>
-                        {currencySymbol} {currentUnitPrice.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                        {currencySymbol} {currentPrice.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                       </td>
 
                       <td style={{ padding: '10px 8px', color: '#cbd5e1' }}>
