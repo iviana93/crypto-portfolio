@@ -179,6 +179,7 @@ function PortfolioTab({ session, currency }) {
   const [portfolio, setPortfolio] = useState([]);
   const [prices, setPrices] = useState({});
   const [fetchingPrices, setFetchingPrices] = useState(true);
+  const [coinIcons, setCoinIcons] = useState({});
 
   // Busca de moedas
   const [searchQuery, setSearchQuery] = useState('');
@@ -194,9 +195,15 @@ function PortfolioTab({ session, currency }) {
   // Calendário
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
 
-  // Taxa de câmbio USD -> BRL, usada para converter valores de compra
-  // registrados em uma moeda para exibição na outra moeda selecionada.
-  const [exchangeRate, setExchangeRate] = useState(null);
+  // Taxa de câmbio USD -> BRL. Prioriza a cotação IMPLÍCITA nos próprios
+  // preços da CoinGecko (brl/usd de uma moeda que você possui) em vez da
+  // cotação oficial do dólar. Isso é importante porque o mercado cripto no
+  // Brasil costuma ter um "prêmio" sobre o câmbio oficial — se convertêssemos
+  // o preço pago com uma taxa e o preço atual já viesse em outra, o
+  // lucro/prejuízo em BRL nunca bateria com o valor "real" calculado em USD.
+  // A cotação oficial (frankfurter.app) só é usada como fallback, antes de
+  // termos qualquer preço de moeda carregado.
+  const [officialExchangeRate, setOfficialExchangeRate] = useState(null);
 
   // BUG CORRIGIDO: a versão anterior não desestruturava { data, error } do
   // retorno do Supabase, então `data`/`error` eram variáveis inexistentes e a
@@ -219,30 +226,40 @@ function PortfolioTab({ session, currency }) {
     loadPortfolio();
   }, []);
 
-  // Busca a cotação USD/BRL para poder converter corretamente o preço de
-  // compra quando o usuário registrou a operação em uma moeda e está
-  // visualizando o dashboard na outra.
+  // Busca a cotação oficial USD/BRL apenas como fallback (ver comentário acima).
   useEffect(() => {
-    const fetchExchangeRate = async () => {
+    const fetchOfficialRate = async () => {
       try {
         const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=BRL');
         const data = await res.json();
-        if (data?.rates?.BRL) setExchangeRate(data.rates.BRL);
+        if (data?.rates?.BRL) setOfficialExchangeRate(data.rates.BRL);
       } catch (err) {
         console.error('Erro ao buscar câmbio USD/BRL:', err);
       }
     };
 
-    fetchExchangeRate();
-    const interval = setInterval(fetchExchangeRate, 5 * 60 * 1000); // atualiza a cada 5 min
+    fetchOfficialRate();
+    const interval = setInterval(fetchOfficialRate, 5 * 60 * 1000); // atualiza a cada 5 min
     return () => clearInterval(interval);
   }, []);
+
+  // Cotação BRL/USD derivada dos preços reais já carregados (média entre as
+  // moedas da carteira que têm preço em ambas as moedas no momento).
+  const derivedExchangeRate = (() => {
+    const impliedRates = Object.values(prices)
+      .map((p) => (p?.usd && p?.brl ? p.brl / p.usd : null))
+      .filter((r) => r !== null);
+    if (impliedRates.length === 0) return null;
+    return impliedRates.reduce((a, b) => a + b, 0) / impliedRates.length;
+  })();
+
+  const exchangeRate = derivedExchangeRate || officialExchangeRate;
 
   // Converte um valor de uma moeda para outra usando a cotação USD/BRL atual.
   const convertCurrency = (value, fromCurrency, toCurrency) => {
     if (!value) return 0;
     if (!fromCurrency || !toCurrency || fromCurrency === toCurrency) return value;
-    if (!exchangeRate) return value; // fallback enquanto o câmbio não carrega
+    if (!exchangeRate) return value; // fallback enquanto nenhuma cotação carregou
 
     if (fromCurrency === 'USD' && toCurrency === 'BRL') return value * exchangeRate;
     if (fromCurrency === 'BRL' && toCurrency === 'USD') return value / exchangeRate;
@@ -299,6 +316,32 @@ function PortfolioTab({ session, currency }) {
     const interval = setInterval(fetchPrices, 60000);
     return () => clearInterval(interval);
   }, [portfolio]);
+
+  // Busca os ícones das moedas da carteira (não muda com frequência, então
+  // basta buscar uma vez por conjunto de moedas, sem precisar de polling).
+  useEffect(() => {
+    if (portfolio.length === 0) {
+      setCoinIcons({});
+      return;
+    }
+
+    const fetchIcons = async () => {
+      const ids = [...new Set(portfolio.map(item => item.coin_id))].join(',');
+      try {
+        const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}`);
+        const data = await res.json();
+        const iconMap = {};
+        (data || []).forEach((coin) => {
+          iconMap[coin.id] = coin.image;
+        });
+        setCoinIcons(iconMap);
+      } catch (err) {
+        console.error('Erro ao buscar ícones das moedas:', err);
+      }
+    };
+
+    fetchIcons();
+  }, [portfolio.map((p) => p.coin_id).sort().join(',')]);
 
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
   const currKey = currency.toLowerCase(); // 'brl' ou 'usd'
@@ -402,9 +445,15 @@ function PortfolioTab({ session, currency }) {
     setSearchResults([]);
   };
 
-  const handleDeleteAsset = async (id) => {
+  const handleDeleteAsset = async (id, coinName) => {
+    // Como agora a posição é consolidada (todo o histórico da moeda fica
+    // numa única linha), excluir apaga todas as transações dessa moeda.
+    const confirmed = window.confirm(`Excluir toda a posição em ${coinName}? Isso apaga o histórico de transações dessa moeda.`);
+    if (!confirmed) return;
+
     const { error } = await supabase.from('portfolio').delete().eq('id', id);
     if (!error) loadPortfolio();
+    else alert(error.message);
   };
 
   // Cálculos Globais (convertendo o preço de compra para a moeda em exibição)
@@ -459,6 +508,8 @@ function PortfolioTab({ session, currency }) {
 
   const transactionDates = [...new Set(allTransactions.map(t => t.date))];
 
+  const isLoadingSummary = fetchingPrices && portfolio.length > 0;
+
   return (
     <>
       {/* Resumo do Patrimônio */}
@@ -466,17 +517,27 @@ function PortfolioTab({ session, currency }) {
         <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
           <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Patrimônio Atual</span>
           <h2 style={{ margin: '4px 0 0 0', fontSize: '18px', color: '#f8fafc', fontWeight: '800' }}>
-            {currencySymbol} {currentValue.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {isLoadingSummary ? (
+              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Carregando...</span>
+            ) : (
+              <>{currencySymbol} {currentValue.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+            )}
           </h2>
         </div>
 
         <div style={{ background: '#1e293b', border: '1px solid #334155', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
           <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Lucro / Prejuízo Total</span>
           <h2 style={{ margin: '4px 0 0 0', fontSize: '17px', color: totalPnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '800' }}>
-            {currencySymbol} {totalPnl.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            <span style={{ fontSize: '11px', display: 'block', fontWeight: '600', marginTop: '2px' }}>
-              ({totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
-            </span>
+            {isLoadingSummary ? (
+              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Carregando...</span>
+            ) : (
+              <>
+                {currencySymbol} {totalPnl.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span style={{ fontSize: '11px', display: 'block', fontWeight: '600', marginTop: '2px' }}>
+                  ({totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
+                </span>
+              </>
+            )}
           </h2>
         </div>
       </div>
@@ -728,7 +789,14 @@ function PortfolioTab({ session, currency }) {
                   return (
                     <tr key={item.id} style={{ borderBottom: '1px solid #334155', color: '#f8fafc', fontSize: '12px' }}>
                       <td style={{ padding: '10px 8px', fontWeight: '600' }}>
-                        {item.coin_name} <span style={{ color: '#64748b', fontSize: '10px' }}>({item.coin_symbol.toUpperCase()})</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {coinIcons[item.coin_id] && (
+                            <img src={coinIcons[item.coin_id]} alt={item.coin_name} width="18" height="18" style={{ borderRadius: '50%' }} />
+                          )}
+                          <span>
+                            {item.coin_name} <span style={{ color: '#64748b', fontSize: '10px' }}>({item.coin_symbol.toUpperCase()})</span>
+                          </span>
+                        </div>
                       </td>
 
                       <td style={{ padding: '10px 8px', color: '#94a3b8', fontSize: '11px' }}>
@@ -764,7 +832,7 @@ function PortfolioTab({ session, currency }) {
 
                       <td style={{ padding: '10px 8px', textAlign: 'right' }}>
                         <button
-                          onClick={() => handleDeleteAsset(item.id)}
+                          onClick={() => handleDeleteAsset(item.id, item.coin_name)}
                           style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
                         >
                           Excluir
