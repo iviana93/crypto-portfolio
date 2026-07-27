@@ -238,17 +238,21 @@ function PortfolioTab({ session, currency }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Converte um valor de uma moeda de origem (a moeda em que a compra foi
-  // registrada) para a moeda atualmente selecionada no dashboard.
-  const convertToDisplayCurrency = (value, fromCurrency) => {
+  // Converte um valor de uma moeda para outra usando a cotação USD/BRL atual.
+  const convertCurrency = (value, fromCurrency, toCurrency) => {
     if (!value) return 0;
-    if (!fromCurrency || fromCurrency === currency) return value;
+    if (!fromCurrency || !toCurrency || fromCurrency === toCurrency) return value;
     if (!exchangeRate) return value; // fallback enquanto o câmbio não carrega
 
-    if (fromCurrency === 'USD' && currency === 'BRL') return value * exchangeRate;
-    if (fromCurrency === 'BRL' && currency === 'USD') return value / exchangeRate;
+    if (fromCurrency === 'USD' && toCurrency === 'BRL') return value * exchangeRate;
+    if (fromCurrency === 'BRL' && toCurrency === 'USD') return value / exchangeRate;
     return value;
   };
+
+  // O banco guarda buy_price sempre em USD (não existe coluna currency_bought).
+  // Estas duas funções convertem entre USD (armazenamento) e a moeda exibida.
+  const convertToDisplayCurrency = (value) => convertCurrency(value, 'USD', currency);
+  const convertToUSD = (value) => convertCurrency(value, currency, 'USD');
 
   // Autocomplete do CoinGecko
   useEffect(() => {
@@ -299,7 +303,7 @@ function PortfolioTab({ session, currency }) {
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
   const currKey = currency.toLowerCase(); // 'brl' ou 'usd'
 
-  // Registrar Transação
+  // Registrar Transação (posição consolidada: uma única linha por moeda)
   const handleAddAsset = async (e) => {
     e.preventDefault();
 
@@ -309,43 +313,84 @@ function PortfolioTab({ session, currency }) {
     }
 
     let parsedAmount = parseFloat(amount);
-    let parsedTotalSpent = parseFloat(totalSpent);
+    const parsedTotalSpent = parseFloat(totalSpent);
 
     if (txType === "sell") {
       parsedAmount *= -1;
     }
 
-    const unitPrice = Math.abs(parsedTotalSpent / parsedAmount);
+    // Posição existente para essa moeda (uma linha por coin_id no portfólio)
+    const existingRow = portfolio.find((p) => p.coin_id === selectedCoin.id);
 
-    const initialHistory = [
-      {
-        date: txDate,
-        type: txType,
-        amount: parsedAmount,
-        total: parsedTotalSpent,
-        currency,
-      },
-    ];
+    const newTx = {
+      date: txDate,
+      type: txType,
+      amount: parsedAmount,
+      total: parsedTotalSpent,
+      currency,
+    };
 
-    const { data, error } = await supabase
-      .from("portfolio")
-      .insert([
+    if (!existingRow) {
+      // Não é possível vender uma moeda que ainda não está na carteira
+      if (txType === "sell") {
+        alert("Você ainda não possui essa moeda na carteira.");
+        return;
+      }
+
+      // buy_price é sempre guardado em USD, independente da moeda selecionada
+      const unitPriceUSD = Math.abs(convertToUSD(parsedTotalSpent) / parsedAmount);
+
+      const { error } = await supabase.from("portfolio").insert([
         {
           user_id: session.user.id,
           coin_id: selectedCoin.id,
           coin_name: selectedCoin.name,
           coin_symbol: selectedCoin.symbol,
           amount: parsedAmount,
-          buy_price: unitPrice,
-          currency_bought: currency,
-          history: initialHistory,
+          buy_price: unitPriceUSD,
+          history: [newTx],
         },
-      ])
-      .select();
+      ]);
 
-    if (error) {
-      alert(error.message);
-      return;
+      if (error) {
+        alert(error.message);
+        return;
+      }
+    } else {
+      // Já existe posição nessa moeda: consolida em vez de criar outra linha
+      if (txType === "sell" && Math.abs(parsedAmount) > existingRow.amount) {
+        alert(`Você só possui ${existingRow.amount} ${existingRow.coin_symbol.toUpperCase()} para vender.`);
+        return;
+      }
+
+      const newAmount = existingRow.amount + parsedAmount;
+      let newBuyPrice = existingRow.buy_price;
+
+      if (txType === "buy") {
+        // Custo médio ponderado, convertendo o novo aporte para USD
+        // (mesma moeda em que buy_price já é guardado no banco)
+        const convertedNewTotalUSD = convertToUSD(parsedTotalSpent);
+        const oldTotalCostUSD = existingRow.amount * existingRow.buy_price;
+        newBuyPrice = newAmount > 0 ? (oldTotalCostUSD + convertedNewTotalUSD) / newAmount : existingRow.buy_price;
+      }
+      // Em uma venda, o preço médio de compra (custo) das unidades restantes
+      // não muda — apenas a quantidade diminui.
+
+      const newHistory = [...(existingRow.history || []), newTx];
+
+      const { error } = await supabase
+        .from("portfolio")
+        .update({
+          amount: newAmount,
+          buy_price: newBuyPrice,
+          history: newHistory,
+        })
+        .eq("id", existingRow.id);
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
     }
 
     await loadPortfolio();
@@ -364,12 +409,12 @@ function PortfolioTab({ session, currency }) {
 
   // Cálculos Globais (convertendo o preço de compra para a moeda em exibição)
   const totalInvested = portfolio.reduce((acc, c) => {
-    const buyPriceInDisplay = convertToDisplayCurrency(c.buy_price, c.currency_bought);
+    const buyPriceInDisplay = convertToDisplayCurrency(c.buy_price);
     return acc + (c.amount * buyPriceInDisplay);
   }, 0);
 
   const currentValue = portfolio.reduce((acc, c) => {
-    const price = prices[c.coin_id]?.[currKey] || convertToDisplayCurrency(c.buy_price, c.currency_bought);
+    const price = prices[c.coin_id]?.[currKey] || convertToDisplayCurrency(c.buy_price);
     return acc + (c.amount * price);
   }, 0);
   const totalPnl = currentValue - totalInvested;
@@ -377,7 +422,7 @@ function PortfolioTab({ session, currency }) {
 
   // Gráfico de Alocação
   const pieChartData = portfolio.map((c) => {
-    const price = prices[c.coin_id]?.[currKey] || convertToDisplayCurrency(c.buy_price, c.currency_bought);
+    const price = prices[c.coin_id]?.[currKey] || convertToDisplayCurrency(c.buy_price);
     return {
       name: c.coin_symbol.toUpperCase(),
       value: c.amount * price
@@ -543,6 +588,12 @@ function PortfolioTab({ session, currency }) {
                 ))}
               </ul>
             )}
+
+            {selectedCoin && portfolio.some((p) => p.coin_id === selectedCoin.id) && (
+              <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#60a5fa' }}>
+                Você já possui essa moeda — essa operação será somada à posição existente.
+              </p>
+            )}
           </div>
 
           <input
@@ -644,7 +695,7 @@ function PortfolioTab({ session, currency }) {
               <thead>
                 <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>
                   <th style={{ padding: '8px' }}>Ativo</th>
-                  <th style={{ padding: '8px' }}>Data Compra</th>
+                  <th style={{ padding: '8px' }}>1ª Compra</th>
                   <th style={{ padding: '8px' }}>Qtd</th>
                   <th style={{ padding: '8px' }}>Preço na Compra</th>
                   <th style={{ padding: '8px' }}>Preço Hoje</th>
@@ -660,7 +711,7 @@ function PortfolioTab({ session, currency }) {
                   const currentUnitPrice = prices[item.coin_id]?.[currKey] || 0;
 
                   // Preço de compra convertido para a moeda selecionada no momento
-                  const buyUnitPrice = convertToDisplayCurrency(item.buy_price, item.currency_bought);
+                  const buyUnitPrice = convertToDisplayCurrency(item.buy_price);
 
                   const totalPaid = buyUnitPrice * item.amount;
                   const totalCurrentValue = currentUnitPrice * item.amount;
