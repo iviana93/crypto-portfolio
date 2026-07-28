@@ -9,22 +9,22 @@ const COLORS = ['#F7931A', '#627EEA', '#14F195', '#375BD2', '#E84142', '#F3BA2F'
 // sem precisar receber o tema via props.
 const THEME_VARS = {
   dark: {
-    '--bg': 'var(--bg)',
-    '--card': 'var(--card)',
-    '--border': 'var(--border)',
-    '--text': 'var(--text)',
-    '--text-muted': 'var(--text-muted)',
-    '--text-faint': 'var(--text-faint)',
-    '--text-secondary': 'var(--text-secondary)',
+    '--bg': '#0f172a',
+    '--card': '#1e293b',
+    '--border': '#334155',
+    '--text': '#f8fafc',
+    '--text-muted': '#94a3b8',
+    '--text-faint': '#64748b',
+    '--text-secondary': '#cbd5e1',
   },
   light: {
     '--bg': '#eef2f7',
     '--card': '#ffffff',
     '--border': '#dbe2ea',
-    '--text': 'var(--bg)',
-    '--text-muted': 'var(--text-faint)',
-    '--text-faint': 'var(--text-muted)',
-    '--text-secondary': 'var(--border)',
+    '--text': '#0f172a',
+    '--text-muted': '#64748b',
+    '--text-faint': '#94a3b8',
+    '--text-secondary': '#334155',
   },
 };
 
@@ -272,19 +272,24 @@ function PortfolioTab({ session, currency }) {
   }, []);
 
   // Busca a cotação oficial USD/BRL apenas como fallback (ver comentário acima).
+  // Trocado de frankfurter.app pra open.er-api.com — a frankfurter passou a
+  // bloquear requests via CORS a partir do navegador (ver console de erros).
   useEffect(() => {
     const fetchOfficialRate = async () => {
       try {
-        const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=BRL');
+        const res = await fetch('https://open.er-api.com/v6/latest/USD');
         const data = await res.json();
         if (data?.rates?.BRL) setOfficialExchangeRate(data.rates.BRL);
       } catch (err) {
-        console.error('Erro ao buscar câmbio USD/BRL:', err);
+        // Isso é só um fallback (ver comentário acima) — se falhar, o app
+        // continua funcionando normalmente usando a cotação implícita da
+        // CoinGecko assim que houver ao menos 1 moeda com preço carregado.
+        console.warn('Câmbio oficial indisponível, usando apenas a cotação implícita da CoinGecko:', err.message);
       }
     };
 
     fetchOfficialRate();
-    const interval = setInterval(fetchOfficialRate, 5 * 60 * 1000); // atualiza a cada 5 min
+    const interval = setInterval(fetchOfficialRate, 10 * 60 * 1000); // a cada 10 min
     return () => clearInterval(interval);
   }, []);
 
@@ -471,58 +476,56 @@ function PortfolioTab({ session, currency }) {
   useEffect(() => {
     if (portfolio.length === 0) {
       setPrices({});
+      setCoinIcons({});
       setFetchingPrices(false);
       return;
     }
 
-    const fetchPrices = async () => {
+    // Busca preços (USD e BRL) e ícones das moedas num único fluxo, usando
+    // o endpoint /coins/markets (que já traz tudo isso junto), em vez de
+    // duas chamadas separadas em paralelo — reduz o número de requests
+    // simultâneos que costumavam estourar o rate limit gratuito da CoinGecko.
+    const fetchMarketData = async () => {
       const ids = [...new Set(portfolio.map(item => item.coin_id))].join(',');
       try {
-        const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,brl`);
-        const data = await res.json();
-        setPrices(data);
-        saveTodaySnapshot(data);
+        const usdRes = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}`);
+        const usdData = await usdRes.json();
+
+        const priceMap = {};
+        const iconMap = {};
+        (usdData || []).forEach((coin) => {
+          priceMap[coin.id] = { usd: coin.current_price };
+          iconMap[coin.id] = coin.image;
+        });
+        setCoinIcons(iconMap);
+
+        const brlRes = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=brl&ids=${ids}`);
+        const brlData = await brlRes.json();
+        (brlData || []).forEach((coin) => {
+          if (priceMap[coin.id]) priceMap[coin.id].brl = coin.current_price;
+        });
+
+        setPrices(priceMap);
+        saveTodaySnapshot(priceMap);
       } catch (err) {
-        console.error(err);
+        console.error('Erro ao buscar cotações:', err);
       } finally {
         setFetchingPrices(false);
       }
     };
 
-    fetchPrices();
-    const interval = setInterval(fetchPrices, 60000);
+    fetchMarketData();
+    const interval = setInterval(fetchMarketData, 90000); // a cada 90s, pra dar folga no rate limit
     return () => clearInterval(interval);
   }, [portfolio]);
 
-  // Busca os ícones das moedas da carteira (não muda com frequência, então
-  // basta buscar uma vez por conjunto de moedas, sem precisar de polling).
-  useEffect(() => {
-    if (portfolio.length === 0) {
-      setCoinIcons({});
-      return;
-    }
-
-    const fetchIcons = async () => {
-      const ids = [...new Set(portfolio.map(item => item.coin_id))].join(',');
-      try {
-        const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}`);
-        const data = await res.json();
-        const iconMap = {};
-        (data || []).forEach((coin) => {
-          iconMap[coin.id] = coin.image;
-        });
-        setCoinIcons(iconMap);
-      } catch (err) {
-        console.error('Erro ao buscar ícones das moedas:', err);
-      }
-    };
-
-    fetchIcons();
-  }, [portfolio.map((p) => p.coin_id).sort().join(',')]);
-
   // Busca a categoria de cada moeda da carteira (DeFi, Layer 1, Meme, etc)
-  // para o gráfico de alocação por categoria. Um request por moeda — só
-  // roda uma vez por conjunto de moedas, não faz polling.
+  // para o gráfico de alocação por categoria. Categorias praticamente nunca
+  // mudam, então guardamos em cache no localStorage por 30 dias e só
+  // buscamos na CoinGecko as moedas que ainda não estão em cache — isso
+  // evita repetir essas chamadas toda vez que a página carrega. Também
+  // espaçamos as chamadas (uma de cada vez, com pausa) e atrasamos o
+  // início em 1.5s pra não competir com o fetch de preços/ícones acima.
   useEffect(() => {
     if (portfolio.length === 0) {
       setCoinCategories({});
@@ -530,27 +533,65 @@ function PortfolioTab({ session, currency }) {
     }
 
     const uniqueIds = [...new Set(portfolio.map((item) => item.coin_id))];
+    const CACHE_KEY = 'crypto_tracker_coin_categories_v1';
+    const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
+
+    let cancelled = false;
 
     const fetchCategories = async () => {
-      const results = await Promise.all(
-        uniqueIds.map(async (id) => {
-          try {
-            const res = await fetch(
-              `https://api.coingecko.com/api/v3/coins/${id}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false`
-            );
-            const data = await res.json();
-            const category = (data.categories || []).find((c) => c && c.trim().length > 0);
-            return [id, category || 'Outros'];
-          } catch (err) {
-            console.error(`Erro ao buscar categoria de ${id}:`, err);
-            return [id, 'Outros'];
-          }
-        })
-      );
-      setCoinCategories(Object.fromEntries(results));
+      let cache = {};
+      try {
+        cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+      } catch {
+        cache = {};
+      }
+
+      const now = Date.now();
+      const fromCache = {};
+      const idsToFetch = [];
+
+      uniqueIds.forEach((id) => {
+        const entry = cache[id];
+        if (entry && (now - entry.ts) < CACHE_TTL_MS) {
+          fromCache[id] = entry.category;
+        } else {
+          idsToFetch.push(id);
+        }
+      });
+
+      if (Object.keys(fromCache).length > 0 && !cancelled) {
+        setCoinCategories((prev) => ({ ...prev, ...fromCache }));
+      }
+
+      for (const id of idsToFetch) {
+        if (cancelled) return;
+        try {
+          const res = await fetch(
+            `https://api.coingecko.com/api/v3/coins/${id}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false`
+          );
+          const data = await res.json();
+          const category = (data.categories || []).find((c) => c && c.trim().length > 0) || 'Outros';
+          cache[id] = { category, ts: Date.now() };
+          if (!cancelled) setCoinCategories((prev) => ({ ...prev, [id]: category }));
+        } catch (err) {
+          console.warn(`Erro ao buscar categoria de ${id}:`, err.message);
+        }
+        // Pequena pausa entre cada chamada pra não estourar o rate limit
+        await new Promise((r) => setTimeout(r, 800));
+      }
+
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+      } catch (err) {
+        console.warn('Não foi possível salvar cache de categorias:', err.message);
+      }
     };
 
-    fetchCategories();
+    const timer = setTimeout(fetchCategories, 1500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [portfolio.map((p) => p.coin_id).sort().join(',')]);
 
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
