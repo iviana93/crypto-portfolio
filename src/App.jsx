@@ -119,6 +119,17 @@ function MainDashboard({ session, theme, setTheme }) {
   const [activeTab, setActiveTab] = useState('portfolio');
   const [currency, setCurrency] = useState('BRL');
 
+  // A aba Mercado só é montada na primeira vez que o usuário clica nela
+  // (evita buscar a lista de mercado sem necessidade logo no login).
+  // Depois de montada uma vez, ela nunca é desmontada de novo — só
+  // escondida com CSS — pra trocar de aba não disparar as buscas de novo.
+  const [hasVisitedMarket, setHasVisitedMarket] = useState(false);
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    if (tab === 'market') setHasVisitedMarket(true);
+  };
+
   return (
     <div style={{ width: '100%', maxWidth: '850px', padding: '20px 16px 40px 16px', boxSizing: 'border-box' }}>
 
@@ -151,7 +162,7 @@ function MainDashboard({ session, theme, setTheme }) {
           {/* Navegação por Abas */}
           <div style={{ display: 'flex', gap: '8px', background: 'var(--card)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
             <button
-              onClick={() => setActiveTab('portfolio')}
+              onClick={() => handleTabChange('portfolio')}
               style={{
                 padding: '6px 12px',
                 borderRadius: '6px',
@@ -166,7 +177,7 @@ function MainDashboard({ session, theme, setTheme }) {
               💼 Meu Portfólio
             </button>
             <button
-              onClick={() => setActiveTab('market')}
+              onClick={() => handleTabChange('market')}
               style={{
                 padding: '6px 12px',
                 borderRadius: '6px',
@@ -200,11 +211,17 @@ function MainDashboard({ session, theme, setTheme }) {
         </div>
       </header>
 
-      {/* Conteúdo da Aba */}
-      {activeTab === 'portfolio' ? (
+      {/* Conteúdo da Aba — Portfólio fica sempre montado (é a aba padrão);
+          Mercado só monta na primeira visita e depois fica sempre vivo
+          (só escondido com CSS), pra trocar de aba não disparar as buscas
+          na CoinGecko de novo. */}
+      <div style={{ display: activeTab === 'portfolio' ? 'block' : 'none' }}>
         <PortfolioTab session={session} currency={currency} />
-      ) : (
-        <MarketTab session={session} currency={currency} />
+      </div>
+      {hasVisitedMarket && (
+        <div style={{ display: activeTab === 'market' ? 'block' : 'none' }}>
+          <MarketTab session={session} currency={currency} />
+        </div>
       )}
 
     </div>
