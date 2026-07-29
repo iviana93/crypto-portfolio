@@ -350,28 +350,44 @@ function PortfolioTab({ session, currency }) {
   const computePositionFromHistory = (historyEntries) => {
     const sorted = [...historyEntries].sort((a, b) => new Date(a.date) - new Date(b.date));
     let amount = 0;
-    let avgCostUSD = 0;
+    let totalCostBRL = 0;
+    let totalCostUSD = 0;
     const enrichedHistory = [];
 
     for (const tx of sorted) {
-      const txTotalUSD = convertAnyToUSD(tx.total, tx.currency);
+      const isBRL = tx.currency === 'BRL';
 
       if (tx.type === 'buy') {
-        const oldTotalCostUSD = amount * avgCostUSD;
-        const newAmount = amount + tx.amount;
-        avgCostUSD = newAmount > 0 ? (oldTotalCostUSD + txTotalUSD) / newAmount : avgCostUSD;
-        amount = newAmount;
+        amount += tx.amount;
+        if (isBRL) {
+          totalCostBRL += tx.total;
+          totalCostUSD += convertAnyToUSD(tx.total, 'BRL');
+        } else {
+          totalCostUSD += tx.total;
+          totalCostBRL += convertCurrency(tx.total, 'USD', 'BRL');
+        }
         enrichedHistory.push({ ...tx, realized_pnl_usd: 0 });
       } else {
         const soldAmount = Math.abs(tx.amount);
-        const saleUnitPriceUSD = soldAmount > 0 ? txTotalUSD / soldAmount : 0;
+        const ratioLeft = amount > 0 ? (amount - soldAmount) / amount : 0;
+
+        // Abate proporcional do custo
+        totalCostBRL *= ratioLeft;
+        totalCostUSD *= ratioLeft;
+        amount -= soldAmount;
+
+        const saleUnitPriceUSD = soldAmount > 0 ? convertAnyToUSD(tx.total, tx.currency) / soldAmount : 0;
+        const avgCostUSD = amount > 0 ? totalCostUSD / amount : 0;
         const realizedPnlUSD = (saleUnitPriceUSD - avgCostUSD) * soldAmount;
-        amount = amount + tx.amount; // tx.amount já vem negativo numa venda
+
         enrichedHistory.push({ ...tx, realized_pnl_usd: realizedPnlUSD });
       }
     }
 
-    return { amount, buyPriceUSD: avgCostUSD, history: enrichedHistory };
+    const avgCostUSD = amount > 0 ? totalCostUSD / amount : 0;
+    const avgCostBRL = amount > 0 ? totalCostBRL / amount : 0;
+
+    return { amount, buyPriceUSD: avgCostUSD, buyPriceBRL: avgCostBRL, totalCostBRL, totalCostUSD, history: enrichedHistory };
   };
 
   // Salva (ou remove, se o histórico ficar vazio) a posição consolidada de
@@ -715,6 +731,13 @@ function PortfolioTab({ session, currency }) {
 
   // Faz o parse manual do CSV (sem depender de biblioteca externa), no
   // mesmo formato exportado por handleExportCSV.
+
+  const formatCryptoPrice = (val, symbol = 'R$') => {
+    if (!val) return `${symbol} 0,00`;
+    const decimals = val < 0.01 ? 8 : val < 1 ? 4 : 2;
+    return `${symbol} ${val.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+  };
+
   const parseCsvLine = (line) => {
     const fields = [];
     let current = '';
@@ -1005,26 +1028,26 @@ function PortfolioTab({ session, currency }) {
               Ainda estamos coletando o histórico diário. Volte amanhã pra ver a evolução real do seu portfólio.
             </p>
           ) : (
-          <div style={{ width: '100%', height: '180px' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={timeSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="pnlColor" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.4} />
-                    <stop offset="95%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={11} />
-                <YAxis stroke="var(--text-muted)" fontSize={11} domain={['auto', 'auto']} />
-                <Tooltip
-                  formatter={(val) => `${currencySymbol} ${val}`}
-                  contentStyle={{ background: 'var(--bg)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px' }}
-                />
-                <Area type="monotone" dataKey="pnl" stroke={totalPnl >= 0 ? '#10b981' : '#ef4444'} fillOpacity={1} fill="url(#pnlColor)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+            <div style={{ width: '100%', height: '180px' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={timeSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="pnlColor" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.4} />
+                      <stop offset="95%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={11} />
+                  <YAxis stroke="var(--text-muted)" fontSize={11} domain={['auto', 'auto']} />
+                  <Tooltip
+                    formatter={(val) => `${currencySymbol} ${val}`}
+                    contentStyle={{ background: 'var(--bg)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px' }}
+                  />
+                  <Area type="monotone" dataKey="pnl" stroke={totalPnl >= 0 ? '#10b981' : '#ef4444'} fillOpacity={1} fill="url(#pnlColor)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </div>
 
@@ -1446,6 +1469,12 @@ function PortfolioTab({ session, currency }) {
                 {filteredPortfolio.map((item) => {
                   // Cotação real da CoinGecko em BRL ou USD
                   const currentUnitPrice = prices[item.coin_id]?.[currKey] || 0;
+
+                  const totalPaid = currency === 'BRL'
+                    ? (item.total_cost_brl || (item.buy_price * item.amount * exchangeRate))
+                    : (item.total_cost_usd || (item.buy_price * item.amount));
+
+                  const buyUnitPrice = item.amount > 0 ? totalPaid / item.amount : 0;
 
                   // Preço de compra convertido para a moeda selecionada no momento
                   const buyUnitPrice = convertToDisplayCurrency(item.buy_price);
