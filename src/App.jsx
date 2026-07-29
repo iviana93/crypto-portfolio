@@ -4,9 +4,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, A
 
 const COLORS = ['#F7931A', '#627EEA', '#14F195', '#375BD2', '#E84142', '#F3BA2F', '#8C8C8C'];
 
-// Paletas de tema. Aplicadas como CSS custom properties no wrapper raiz,
-// então qualquer componente filho pode usar var(--bg), var(--card) etc,
-// sem precisar receber o tema via props.
+// Paletas de tema. Aplicadas como CSS custom properties no wrapper raiz.
 const THEME_VARS = {
   dark: {
     '--bg': '#0f172a',
@@ -119,10 +117,6 @@ function MainDashboard({ session, theme, setTheme }) {
   const [activeTab, setActiveTab] = useState('portfolio');
   const [currency, setCurrency] = useState('BRL');
 
-  // A aba Mercado só é montada na primeira vez que o usuário clica nela
-  // (evita buscar a lista de mercado sem necessidade logo no login).
-  // Depois de montada uma vez, ela nunca é desmontada de novo — só
-  // escondida com CSS — pra trocar de aba não disparar as buscas de novo.
   const [hasVisitedMarket, setHasVisitedMarket] = useState(false);
 
   const handleTabChange = (tab) => {
@@ -211,10 +205,6 @@ function MainDashboard({ session, theme, setTheme }) {
         </div>
       </header>
 
-      {/* Conteúdo da Aba — Portfólio fica sempre montado (é a aba padrão);
-          Mercado só monta na primeira visita e depois fica sempre vivo
-          (só escondido com CSS), pra trocar de aba não disparar as buscas
-          na CoinGecko de novo. */}
       <div style={{ display: activeTab === 'portfolio' ? 'block' : 'none' }}>
         <PortfolioTab session={session} currency={currency} />
       </div>
@@ -248,29 +238,17 @@ function PortfolioTab({ session, currency }) {
   const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
   const [walletLabel, setWalletLabel] = useState('');
 
-  // Filtro por carteira/rótulo na tabela e nos gráficos
+  // Filtro por carteira/rótulo
   const [walletFilter, setWalletFilter] = useState('todas');
 
-  // Transação sendo editada no painel do calendário (null = nenhuma)
+  // Transação sendo editada
   const [editingTx, setEditingTx] = useState(null);
 
   // Calendário
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
 
-  // Taxa de câmbio USD -> BRL. Prioriza a cotação IMPLÍCITA nos próprios
-  // preços da CoinGecko (brl/usd de uma moeda que você possui) em vez da
-  // cotação oficial do dólar. Isso é importante porque o mercado cripto no
-  // Brasil costuma ter um "prêmio" sobre o câmbio oficial — se convertêssemos
-  // o preço pago com uma taxa e o preço atual já viesse em outra, o
-  // lucro/prejuízo em BRL nunca bateria com o valor "real" calculado em USD.
-  // A cotação oficial (frankfurter.app) só é usada como fallback, antes de
-  // termos qualquer preço de moeda carregado.
   const [officialExchangeRate, setOfficialExchangeRate] = useState(null);
 
-  // BUG CORRIGIDO: a versão anterior não desestruturava { data, error } do
-  // retorno do Supabase, então `data`/`error` eram variáveis inexistentes e a
-  // função lançava um erro toda vez que era chamada — por isso o portfólio
-  // nunca era atualizado (nem no load inicial, nem depois de adicionar uma moeda).
   const loadPortfolio = async () => {
     const { data, error } = await supabase
       .from("portfolio")
@@ -288,9 +266,6 @@ function PortfolioTab({ session, currency }) {
     loadPortfolio();
   }, []);
 
-  // Busca a cotação oficial USD/BRL apenas como fallback (ver comentário acima).
-  // Trocado de frankfurter.app pra open.er-api.com — a frankfurter passou a
-  // bloquear requests via CORS a partir do navegador (ver console de erros).
   useEffect(() => {
     const fetchOfficialRate = async () => {
       try {
@@ -298,20 +273,15 @@ function PortfolioTab({ session, currency }) {
         const data = await res.json();
         if (data?.rates?.BRL) setOfficialExchangeRate(data.rates.BRL);
       } catch (err) {
-        // Isso é só um fallback (ver comentário acima) — se falhar, o app
-        // continua funcionando normalmente usando a cotação implícita da
-        // CoinGecko assim que houver ao menos 1 moeda com preço carregado.
         console.warn('Câmbio oficial indisponível, usando apenas a cotação implícita da CoinGecko:', err.message);
       }
     };
 
     fetchOfficialRate();
-    const interval = setInterval(fetchOfficialRate, 10 * 60 * 1000); // a cada 10 min
+    const interval = setInterval(fetchOfficialRate, 10 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Cotação BRL/USD derivada dos preços reais já carregados (média entre as
-  // moedas da carteira que têm preço em ambas as moedas no momento).
   const derivedExchangeRate = (() => {
     const impliedRates = Object.values(prices)
       .map((p) => (p?.usd && p?.brl ? p.brl / p.usd : null))
@@ -322,77 +292,76 @@ function PortfolioTab({ session, currency }) {
 
   const exchangeRate = derivedExchangeRate || officialExchangeRate;
 
-  // Converte um valor de uma moeda para outra usando a cotação USD/BRL atual.
   const convertCurrency = (value, fromCurrency, toCurrency) => {
     if (!value) return 0;
     if (!fromCurrency || !toCurrency || fromCurrency === toCurrency) return value;
-    if (!exchangeRate) return value; // fallback enquanto nenhuma cotação carregou
+    if (!exchangeRate) return value;
 
     if (fromCurrency === 'USD' && toCurrency === 'BRL') return value * exchangeRate;
     if (fromCurrency === 'BRL' && toCurrency === 'USD') return value / exchangeRate;
     return value;
   };
 
-  // O banco guarda buy_price sempre em USD (não existe coluna currency_bought).
-  // Estas duas funções convertem entre USD (armazenamento) e a moeda exibida.
   const convertToDisplayCurrency = (value) => convertCurrency(value, 'USD', currency);
   const convertToUSD = (value) => convertCurrency(value, currency, 'USD');
-  // Versão que não depende da moeda selecionada no momento — necessária para
-  // recalcular transações antigas que podem ter sido registradas em uma moeda
-  // diferente da que está selecionada agora.
   const convertAnyToUSD = (value, fromCurrency) => convertCurrency(value, fromCurrency, 'USD');
 
-  // Recalcula uma posição do zero a partir do histórico completo de
-  // transações de uma moeda. Isso é usado sempre que uma transação é
-  // adicionada, editada ou importada — garante que quantidade, preço médio
-  // de compra (custo) e lucro realizado por venda fiquem sempre consistentes,
-  // em vez de ir "remendando" incrementalmente a cada operação.
+  // NOVO: Função utilitária para calcular o Total Pago REAL e FIXO de uma moeda
+  const getItemTotalPaid = (item, targetCurrency) => {
+    if (!item.history || item.history.length === 0) {
+      return convertCurrency(item.buy_price * item.amount, 'USD', targetCurrency);
+    }
+
+    let cost = 0;
+    let qty = 0;
+    const sorted = [...item.history].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    for (const tx of sorted) {
+      // Pega o valor exatamente na moeda da transação se for a mesma exibida, sem variação cambial
+      const txTotalInDisplay = tx.currency === targetCurrency
+        ? tx.total
+        : convertCurrency(tx.total, tx.currency, targetCurrency);
+
+      if (tx.type === 'buy') {
+        cost += txTotalInDisplay;
+        qty += tx.amount;
+      } else {
+        const soldQty = Math.abs(tx.amount);
+        const avgCost = qty > 0 ? cost / qty : 0;
+        cost -= avgCost * soldQty;
+        qty -= soldQty;
+      }
+    }
+    return Math.max(0, cost);
+  };
+
   const computePositionFromHistory = (historyEntries) => {
     const sorted = [...historyEntries].sort((a, b) => new Date(a.date) - new Date(b.date));
     let amount = 0;
-    let totalCostBRL = 0;
-    let totalCostUSD = 0;
+    let avgCostUSD = 0;
     const enrichedHistory = [];
 
     for (const tx of sorted) {
-      const isBRL = tx.currency === 'BRL';
+      const txTotalUSD = convertAnyToUSD(tx.total, tx.currency);
 
       if (tx.type === 'buy') {
-        amount += tx.amount;
-        if (isBRL) {
-          totalCostBRL += tx.total;
-          totalCostUSD += convertAnyToUSD(tx.total, 'BRL');
-        } else {
-          totalCostUSD += tx.total;
-          totalCostBRL += convertCurrency(tx.total, 'USD', 'BRL');
-        }
+        const oldTotalCostUSD = amount * avgCostUSD;
+        const newAmount = amount + tx.amount;
+        avgCostUSD = newAmount > 0 ? (oldTotalCostUSD + txTotalUSD) / newAmount : avgCostUSD;
+        amount = newAmount;
         enrichedHistory.push({ ...tx, realized_pnl_usd: 0 });
       } else {
         const soldAmount = Math.abs(tx.amount);
-        const ratioLeft = amount > 0 ? (amount - soldAmount) / amount : 0;
-
-        // Abate proporcional do custo
-        totalCostBRL *= ratioLeft;
-        totalCostUSD *= ratioLeft;
-        amount -= soldAmount;
-
-        const saleUnitPriceUSD = soldAmount > 0 ? convertAnyToUSD(tx.total, tx.currency) / soldAmount : 0;
-        const avgCostUSD = amount > 0 ? totalCostUSD / amount : 0;
+        const saleUnitPriceUSD = soldAmount > 0 ? txTotalUSD / soldAmount : 0;
         const realizedPnlUSD = (saleUnitPriceUSD - avgCostUSD) * soldAmount;
-
+        amount = amount + tx.amount;
         enrichedHistory.push({ ...tx, realized_pnl_usd: realizedPnlUSD });
       }
     }
 
-    const avgCostUSD = amount > 0 ? totalCostUSD / amount : 0;
-    const avgCostBRL = amount > 0 ? totalCostBRL / amount : 0;
-
-    return { amount, buyPriceUSD: avgCostUSD, buyPriceBRL: avgCostBRL, totalCostBRL, totalCostUSD, history: enrichedHistory };
+    return { amount, buyPriceUSD: avgCostUSD, history: enrichedHistory };
   };
 
-  // Salva (ou remove, se o histórico ficar vazio) a posição consolidada de
-  // uma moeda a partir do seu histórico de transações já atualizado.
-  // walletLabelValue só sobrescreve o rótulo existente se vier preenchido.
   const savePositionFromHistory = async (existingRow, coinMeta, newHistory, walletLabelValue) => {
     if (newHistory.length === 0) {
       if (existingRow) {
@@ -430,7 +399,6 @@ function PortfolioTab({ session, currency }) {
     return true;
   };
 
-  // Autocomplete do CoinGecko
   useEffect(() => {
     if (searchQuery.length < 2) {
       setSearchResults([]);
@@ -450,8 +418,6 @@ function PortfolioTab({ session, currency }) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Histórico de snapshots diários do portfólio (para o gráfico de evolução
-  // real, em vez de uma extrapolação linear inventada).
   const [snapshotHistory, setSnapshotHistory] = useState([]);
 
   const loadSnapshots = async () => {
@@ -472,10 +438,6 @@ function PortfolioTab({ session, currency }) {
     loadSnapshots();
   }, []);
 
-  // Salva (ou atualiza) o snapshot de HOJE com o valor total e o total
-  // investido, ambos em USD (buy_price já é guardado em USD no banco).
-  // Roda toda vez que os preços são atualizados, mas só grava 1x por dia
-  // graças ao UNIQUE(user_id, snapshot_date) + upsert.
   const saveTodaySnapshot = async (freshPrices) => {
     if (portfolio.length === 0) return;
 
@@ -505,7 +467,6 @@ function PortfolioTab({ session, currency }) {
     }
   };
 
-  // Busca cotações atuais em BRL e USD simultaneamente
   useEffect(() => {
     if (portfolio.length === 0) {
       setPrices({});
@@ -514,10 +475,6 @@ function PortfolioTab({ session, currency }) {
       return;
     }
 
-    // Busca preços (USD e BRL) e ícones das moedas num único fluxo, usando
-    // o endpoint /coins/markets (que já traz tudo isso junto), em vez de
-    // duas chamadas separadas em paralelo — reduz o número de requests
-    // simultâneos que costumavam estourar o rate limit gratuito da CoinGecko.
     const fetchMarketData = async () => {
       const ids = [...new Set(portfolio.map(item => item.coin_id))].join(',');
       try {
@@ -548,17 +505,10 @@ function PortfolioTab({ session, currency }) {
     };
 
     fetchMarketData();
-    const interval = setInterval(fetchMarketData, 90000); // a cada 90s, pra dar folga no rate limit
+    const interval = setInterval(fetchMarketData, 90000);
     return () => clearInterval(interval);
   }, [portfolio]);
 
-  // Busca a categoria de cada moeda da carteira (DeFi, Layer 1, Meme, etc)
-  // para o gráfico de alocação por categoria. Categorias praticamente nunca
-  // mudam, então guardamos em cache no localStorage por 30 dias e só
-  // buscamos na CoinGecko as moedas que ainda não estão em cache — isso
-  // evita repetir essas chamadas toda vez que a página carrega. Também
-  // espaçamos as chamadas (uma de cada vez, com pausa) e atrasamos o
-  // início em 1.5s pra não competir com o fetch de preços/ícones acima.
   useEffect(() => {
     if (portfolio.length === 0) {
       setCoinCategories({});
@@ -567,7 +517,7 @@ function PortfolioTab({ session, currency }) {
 
     const uniqueIds = [...new Set(portfolio.map((item) => item.coin_id))];
     const CACHE_KEY = 'crypto_tracker_coin_categories_v1';
-    const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
+    const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
     let cancelled = false;
 
@@ -609,7 +559,6 @@ function PortfolioTab({ session, currency }) {
         } catch (err) {
           console.warn(`Erro ao buscar categoria de ${id}:`, err.message);
         }
-        // Pequena pausa entre cada chamada pra não estourar o rate limit
         await new Promise((r) => setTimeout(r, 800));
       }
 
@@ -628,9 +577,8 @@ function PortfolioTab({ session, currency }) {
   }, [portfolio.map((p) => p.coin_id).sort().join(',')]);
 
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
-  const currKey = currency.toLowerCase(); // 'brl' ou 'usd'
+  const currKey = currency.toLowerCase();
 
-  // Registrar Transação (posição consolidada: uma única linha por moeda)
   const handleAddAsset = async (e) => {
     e.preventDefault();
 
@@ -680,8 +628,6 @@ function PortfolioTab({ session, currency }) {
   };
 
   const handleDeleteAsset = async (id, coinName) => {
-    // Como agora a posição é consolidada (todo o histórico da moeda fica
-    // numa única linha), excluir apaga todas as transações dessa moeda.
     const confirmed = window.confirm(`Excluir toda a posição em ${coinName}? Isso apaga o histórico de transações dessa moeda.`);
     if (!confirmed) return;
 
@@ -690,8 +636,6 @@ function PortfolioTab({ session, currency }) {
     else alert(error.message);
   };
 
-  // Exporta uma linha por TRANSAÇÃO (não por posição), pra preservar o
-  // histórico completo e permitir reimportar depois sem perder nada.
   const handleExportCSV = () => {
     const rows = [['coin_id', 'coin_name', 'coin_symbol', 'wallet_label', 'date', 'type', 'amount', 'total', 'currency']];
 
@@ -711,7 +655,6 @@ function PortfolioTab({ session, currency }) {
       });
     });
 
-    // Escapa campos que contenham vírgula, aspas ou quebra de linha
     const escapeCsvField = (field) => {
       const str = String(field ?? '');
       return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
@@ -727,15 +670,6 @@ function PortfolioTab({ session, currency }) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  };
-
-  // Faz o parse manual do CSV (sem depender de biblioteca externa), no
-  // mesmo formato exportado por handleExportCSV.
-
-  const formatCryptoPrice = (val, symbol = 'R$') => {
-    if (!val) return `${symbol} 0,00`;
-    const decimals = val < 0.01 ? 8 : val < 1 ? 4 : 2;
-    return `${symbol} ${val.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
   };
 
   const parseCsvLine = (line) => {
@@ -836,7 +770,6 @@ function PortfolioTab({ session, currency }) {
     }
   };
 
-  // Abre o formulário de edição pra uma transação específica
   const handleStartEditTx = (tx) => {
     setEditingTx({
       portfolioId: tx.portfolioId,
@@ -849,8 +782,6 @@ function PortfolioTab({ session, currency }) {
     });
   };
 
-  // Salva a edição: substitui a transação no histórico da posição e
-  // recalcula tudo (quantidade, preço médio, lucro realizado) do zero.
   const handleSaveEditTx = async () => {
     const row = portfolio.find((p) => p.id === editingTx.portfolioId);
     if (!row) return;
@@ -872,8 +803,6 @@ function PortfolioTab({ session, currency }) {
     await loadPortfolio();
   };
 
-  // Remove uma única transação do histórico (não a posição inteira) e
-  // recalcula a posição a partir do que sobrou.
   const handleDeleteTx = async (tx) => {
     const confirmed = window.confirm('Excluir essa transação? A quantidade e o preço médio da moeda serão recalculados.');
     if (!confirmed) return;
@@ -888,31 +817,25 @@ function PortfolioTab({ session, currency }) {
     await loadPortfolio();
   };
 
-  // Cálculos Globais (convertendo o preço de compra para a moeda em exibição)
-  const totalInvested = portfolio.reduce((acc, c) => {
-    const buyPriceInDisplay = convertToDisplayCurrency(c.buy_price);
-    return acc + (c.amount * buyPriceInDisplay);
-  }, 0);
+  // CÁLCULOS GLOBAIS AJUSTADOS: Total Investido Real
+  const totalInvested = portfolio.reduce((acc, c) => acc + getItemTotalPaid(c, currency), 0);
 
   const currentValue = portfolio.reduce((acc, c) => {
     const price = prices[c.coin_id]?.[currKey] || convertToDisplayCurrency(c.buy_price);
     return acc + (c.amount * price);
   }, 0);
-  const totalPnl = currentValue - totalInvested; // não realizado (posições ainda abertas)
+  const totalPnl = currentValue - totalInvested;
   const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
 
-  // Lucro realizado: soma de tudo que já foi "travado" em vendas passadas,
-  // calculado no momento em que cada venda foi salva (custo médio vigente
-  // naquele instante), guardado em cada transação do histórico.
   const totalRealizedPnlUSD = portfolio.reduce((acc, c) => {
     const realized = (c.history || []).reduce((s, tx) => s + (tx.realized_pnl_usd || 0), 0);
     return acc + realized;
   }, 0);
   const totalRealizedPnl = convertToDisplayCurrency(totalRealizedPnlUSD);
 
-  // Melhor e pior ativo da carteira (variação % desde o preço médio de compra)
   const assetsWithPnlPct = portfolio.map((c) => {
-    const buyPriceDisplay = convertToDisplayCurrency(c.buy_price);
+    const itemTotalPaid = getItemTotalPaid(c, currency);
+    const buyPriceDisplay = c.amount > 0 ? itemTotalPaid / c.amount : 0;
     const currentPrice = prices[c.coin_id]?.[currKey] || buyPriceDisplay;
     const pnlPct = buyPriceDisplay > 0 ? ((currentPrice - buyPriceDisplay) / buyPriceDisplay) * 100 : 0;
     return { ...c, pnlPct };
@@ -925,7 +848,6 @@ function PortfolioTab({ session, currency }) {
     ? assetsWithPnlPct.reduce((worst, c) => (c.pnlPct < worst.pnlPct ? c : worst))
     : null;
 
-  // Alocação por categoria (DeFi, Layer 1, Meme, etc — vem da CoinGecko)
   const categoryAllocation = (() => {
     const totals = {};
     portfolio.forEach((c) => {
@@ -940,14 +862,11 @@ function PortfolioTab({ session, currency }) {
       .sort((a, b) => b.value - a.value);
   })();
 
-  // Rótulos de carteira existentes (pra montar os botões de filtro) e a
-  // lista de posições já filtrada pelo rótulo selecionado.
   const walletLabels = [...new Set(portfolio.map((c) => c.wallet_label).filter(Boolean))];
   const filteredPortfolio = walletFilter === 'todas'
     ? portfolio
     : portfolio.filter((c) => c.wallet_label === walletFilter);
 
-  // Gráfico de Alocação
   const pieChartData = portfolio.map((c) => {
     const price = prices[c.coin_id]?.[currKey] || convertToDisplayCurrency(c.buy_price);
     return {
@@ -956,7 +875,6 @@ function PortfolioTab({ session, currency }) {
     };
   });
 
-  // Gráfico Temporal (evolução real, a partir dos snapshots diários salvos)
   const timeSeriesData = snapshotHistory.map((s) => {
     const date = new Date(`${s.snapshot_date}T00:00:00`);
     const dateStr = `${date.getDate()}/${date.getMonth() + 1}`;
@@ -965,7 +883,6 @@ function PortfolioTab({ session, currency }) {
     return { date: dateStr, pnl: parseFloat(pnlDisplay.toFixed(2)) };
   });
 
-  // Transações Calendário
   const allTransactions = [];
   portfolio.forEach((asset) => {
     if (asset.history && Array.isArray(asset.history)) {
@@ -1028,26 +945,26 @@ function PortfolioTab({ session, currency }) {
               Ainda estamos coletando o histórico diário. Volte amanhã pra ver a evolução real do seu portfólio.
             </p>
           ) : (
-            <div style={{ width: '100%', height: '180px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={timeSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="pnlColor" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.4} />
-                      <stop offset="95%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={11} />
-                  <YAxis stroke="var(--text-muted)" fontSize={11} domain={['auto', 'auto']} />
-                  <Tooltip
-                    formatter={(val) => `${currencySymbol} ${val}`}
-                    contentStyle={{ background: 'var(--bg)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px' }}
-                  />
-                  <Area type="monotone" dataKey="pnl" stroke={totalPnl >= 0 ? '#10b981' : '#ef4444'} fillOpacity={1} fill="url(#pnlColor)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+          <div style={{ width: '100%', height: '180px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={timeSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="pnlColor" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.4} />
+                    <stop offset="95%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={11} />
+                <YAxis stroke="var(--text-muted)" fontSize={11} domain={['auto', 'auto']} />
+                <Tooltip
+                  formatter={(val) => `${currencySymbol} ${val}`}
+                  contentStyle={{ background: 'var(--bg)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px' }}
+                />
+                <Area type="monotone" dataKey="pnl" stroke={totalPnl >= 0 ? '#10b981' : '#ef4444'} fillOpacity={1} fill="url(#pnlColor)" strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
           )}
         </div>
 
@@ -1467,26 +1384,20 @@ function PortfolioTab({ session, currency }) {
               </thead>
               <tbody>
                 {filteredPortfolio.map((item) => {
-                  // Cotação real da CoinGecko em BRL ou USD
                   const currentUnitPrice = prices[item.coin_id]?.[currKey] || 0;
 
-                  const totalPaid = currency === 'BRL'
-                    ? (item.total_cost_brl || (item.buy_price * item.amount * exchangeRate))
-                    : (item.total_cost_usd || (item.buy_price * item.amount));
+                  // NOVO: Total Pago REAL vindo direto do histórico
+                  const totalPaid = getItemTotalPaid(item, currency);
 
+                  // Preço médio unitário derivado do Total Pago Real
                   const buyUnitPrice = item.amount > 0 ? totalPaid / item.amount : 0;
 
-                  // Preço de compra convertido para a moeda selecionada no momento
-                  const buyUnitPrice = convertToDisplayCurrency(item.buy_price);
-
-                  const totalPaid = buyUnitPrice * item.amount;
                   const totalCurrentValue = currentUnitPrice * item.amount;
 
-                  // Profit / Loss
+                  // Profit / Loss exato
                   const itemPnl = totalCurrentValue - totalPaid;
-                  const itemPnlPct = buyUnitPrice > 0 ? ((currentUnitPrice - buyUnitPrice) / buyUnitPrice) * 100 : 0;
+                  const itemPnlPct = totalPaid > 0 ? (itemPnl / totalPaid) * 100 : 0;
 
-                  // Data da compra
                   const purchaseDate = item.history && item.history[0]?.date
                     ? item.history[0].date.split('-').reverse().join('/')
                     : 'N/A';
@@ -1574,9 +1485,6 @@ function MarketTab({ session, currency }) {
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
   const vsCurrency = currency.toLowerCase();
 
-  // Carregar Favoritos do Supabase
-  // BUG CORRIGIDO: faltava filtrar por user_id, então qualquer usuário via
-  // (e podia herdar visualmente) os favoritos de todas as contas.
   const loadFavorites = async () => {
     const { data, error } = await supabase
       .from('favorites')
@@ -1591,7 +1499,6 @@ function MarketTab({ session, currency }) {
     loadFavorites();
   }, []);
 
-  // Carregar Dados do Mercado
   useEffect(() => {
     const fetchMarketData = async () => {
       setLoading(true);
@@ -1611,7 +1518,6 @@ function MarketTab({ session, currency }) {
     fetchMarketData();
   }, [vsCurrency]);
 
-  // Alternar Favorito
   const toggleFavorite = async (coinId) => {
     const isFav = favorites.includes(coinId);
 
@@ -1636,7 +1542,6 @@ function MarketTab({ session, currency }) {
     }
   };
 
-  // Ordena para colocar favoritos no topo
   const sortedCoins = [...marketCoins].sort((a, b) => {
     const aFav = favorites.includes(a.id);
     const bFav = favorites.includes(b.id);
