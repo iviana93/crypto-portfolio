@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
 
 const COLORS = ['#F7931A', '#627EEA', '#14F195', '#375BD2', '#E84142', '#F3BA2F', '#8C8C8C'];
 
-// Paletas de tema. Aplicadas como CSS custom properties no wrapper raiz.
 const THEME_VARS = {
   dark: {
     '--bg': '#0f172a',
@@ -116,7 +115,6 @@ function AuthScreen() {
 function MainDashboard({ session, theme, setTheme }) {
   const [activeTab, setActiveTab] = useState('portfolio');
   const [currency, setCurrency] = useState('BRL');
-
   const [hasVisitedMarket, setHasVisitedMarket] = useState(false);
 
   const handleTabChange = (tab) => {
@@ -218,7 +216,137 @@ function MainDashboard({ session, theme, setTheme }) {
   );
 }
 
-// --- ABA 1: PORTFÓLIO (CORRIGIDA) ---
+// --- MODAL: GRÁFICO HISTÓRICO INDIVIDUAL (30 DIAS) ---
+function AssetChartModal({ asset, currency, buyUnitPrice, onClose }) {
+  const [chartData, setChartData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const currencySymbol = currency === 'BRL' ? 'R$' : '$';
+  const vsCurrency = currency.toLowerCase();
+
+  useEffect(() => {
+    if (!asset) return;
+
+    const cacheKey = `chart_30d_${asset.coin_id}_${vsCurrency}`;
+    const cached = localStorage.getItem(cacheKey);
+    const now = Date.now();
+
+    if (cached) {
+      try {
+        const { data, ts } = JSON.parse(cached);
+        // Cache de 30 minutos
+        if (now - ts < 30 * 60 * 1000) {
+          setChartData(data);
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.warn('Erro ao ler cache do gráfico:', e);
+      }
+    }
+
+    const fetchChart = async () => {
+      setLoading(true);
+      setErrorMsg('');
+      try {
+        const res = await fetch(
+          `https://api.coingecko.com/api/v3/coins/${asset.coin_id}/market_chart?vs_currency=${vsCurrency}&days=30`
+        );
+        if (res.status === 429) {
+          throw new Error('Limite de requisições da CoinGecko excedido. Tente novamente em alguns instantes.');
+        }
+        if (!res.ok) throw new Error('Falha ao carregar gráfico histórico.');
+
+        const json = await res.json();
+        const formatted = (json.prices || []).map(([timestamp, price]) => {
+          const dateObj = new Date(timestamp);
+          return {
+            timestamp,
+            date: `${dateObj.getDate()}/${dateObj.getMonth() + 1}`,
+            fullDate: dateObj.toLocaleDateString('pt-BR'),
+            price: parseFloat(price.toFixed(price < 1 ? 6 : 2)),
+          };
+        });
+
+        localStorage.setItem(cacheKey, JSON.stringify({ data: formatted, ts: Date.now() }));
+        setChartData(formatted);
+      } catch (err) {
+        setErrorMsg(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchChart();
+  }, [asset, vsCurrency]);
+
+  if (!asset) return null;
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px', width: '100%', maxWidth: '620px', boxSizing: 'border-box' }}>
+        
+        {/* Cabeçalho do Modal */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '17px', color: 'var(--text)' }}>
+              📈 Desempenho de {asset.coin_name} <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>({asset.coin_symbol.toUpperCase()})</span>
+            </h3>
+            <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: 'var(--text-faint)' }}>Cotação dos últimos 30 dias ({currency})</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '18px', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+        </div>
+
+        {/* Corpo do Modal */}
+        {loading ? (
+          <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '50px 0', fontSize: '13px' }}>Carregando dados históricos...</p>
+        ) : errorMsg ? (
+          <p style={{ textAlign: 'center', color: '#ef4444', padding: '40px 0', fontSize: '13px' }}>{errorMsg}</p>
+        ) : (
+          <div>
+            <div style={{ width: '100%', height: '260px' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="assetPriceGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={11} interval="preserveStartEnd" />
+                  <YAxis stroke="var(--text-muted)" fontSize={11} domain={['auto', 'auto']} tickFormatter={(v) => `${currencySymbol}${v}`} />
+                  <Tooltip
+                    formatter={(val) => `${currencySymbol} ${val.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US')}`}
+                    labelFormatter={(label, payload) => payload[0]?.payload?.fullDate ? `Data: ${payload[0].payload.fullDate}` : label}
+                    contentStyle={{ background: 'var(--bg)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px' }}
+                  />
+                  {buyUnitPrice > 0 && (
+                    <ReferenceLine
+                      y={buyUnitPrice}
+                      stroke="#10b981"
+                      strokeDasharray="4 4"
+                      label={{ value: `Preço de Compra: ${currencySymbol} ${buyUnitPrice.toFixed(2)}`, fill: '#10b981', fontSize: 10, position: 'insideTopLeft' }}
+                    />
+                  )}
+                  <Area type="monotone" dataKey="price" stroke="#3b82f6" fillOpacity={1} fill="url(#assetPriceGrad)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div style={{ marginTop: '12px', padding: '10px 14px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
+              <span>🟢 <strong>Linha Pontilhada Verde:</strong> Seu preço médio de compra ({currencySymbol} {buyUnitPrice.toFixed(2)})</span>
+              <span>🔵 <strong>Linha Azul:</strong> Cotação de mercado</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --- ABA 1: PORTFÓLIO ---
 function PortfolioTab({ session, currency }) {
   const [portfolio, setPortfolio] = useState([]);
   const [prices, setPrices] = useState({});
@@ -226,28 +354,23 @@ function PortfolioTab({ session, currency }) {
   const [coinIcons, setCoinIcons] = useState({});
   const [coinCategories, setCoinCategories] = useState({});
 
-  // Busca de moedas
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedCoin, setSelectedCoin] = useState(null);
 
-  // Formulário de registro
   const [amount, setAmount] = useState('');
   const [totalSpent, setTotalSpent] = useState('');
   const [txType, setTxType] = useState('buy');
   const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
   const [walletLabel, setWalletLabel] = useState('');
 
-  // Filtro por carteira/rótulo
   const [walletFilter, setWalletFilter] = useState('todas');
-
-  // Transação sendo editada
   const [editingTx, setEditingTx] = useState(null);
-
-  // Calendário
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
-
   const [officialExchangeRate, setOfficialExchangeRate] = useState(null);
+
+  // NOVO: Estado para abrir o gráfico individual do ativo
+  const [selectedChartAsset, setSelectedChartAsset] = useState(null);
 
   const loadPortfolio = async () => {
     const { data, error } = await supabase
@@ -273,7 +396,7 @@ function PortfolioTab({ session, currency }) {
         const data = await res.json();
         if (data?.rates?.BRL) setOfficialExchangeRate(data.rates.BRL);
       } catch (err) {
-        console.warn('Câmbio oficial indisponível, usando apenas a cotação implícita da CoinGecko:', err.message);
+        console.warn('Câmbio oficial indisponível:', err.message);
       }
     };
 
@@ -303,10 +426,8 @@ function PortfolioTab({ session, currency }) {
   };
 
   const convertToDisplayCurrency = (value) => convertCurrency(value, 'USD', currency);
-  const convertToUSD = (value) => convertCurrency(value, currency, 'USD');
   const convertAnyToUSD = (value, fromCurrency) => convertCurrency(value, fromCurrency, 'USD');
 
-  // NOVO: Função utilitária para calcular o Total Pago REAL e FIXO de uma moeda
   const getItemTotalPaid = (item, targetCurrency) => {
     if (!item.history || item.history.length === 0) {
       return convertCurrency(item.buy_price * item.amount, 'USD', targetCurrency);
@@ -317,7 +438,6 @@ function PortfolioTab({ session, currency }) {
     const sorted = [...item.history].sort((a, b) => new Date(a.date) - new Date(b.date));
 
     for (const tx of sorted) {
-      // Pega o valor exatamente na moeda da transação se for a mesma exibida, sem variação cambial
       const txTotalInDisplay = tx.currency === targetCurrency
         ? tx.total
         : convertCurrency(tx.total, tx.currency, targetCurrency);
@@ -458,12 +578,12 @@ function PortfolioTab({ session, currency }) {
         { onConflict: 'user_id,snapshot_date' }
       );
       if (error) {
-        console.error('Erro ao salvar snapshot diário:', error);
+        console.error('Erro ao salvar snapshot:', error);
         return;
       }
       loadSnapshots();
     } catch (err) {
-      console.error('Erro ao salvar snapshot diário:', err);
+      console.error('Erro ao salvar snapshot:', err);
     }
   };
 
@@ -523,11 +643,7 @@ function PortfolioTab({ session, currency }) {
 
     const fetchCategories = async () => {
       let cache = {};
-      try {
-        cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
-      } catch {
-        cache = {};
-      }
+      try { cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); } catch { cache = {}; }
 
       const now = Date.now();
       const fromCache = {};
@@ -562,11 +678,7 @@ function PortfolioTab({ session, currency }) {
         await new Promise((r) => setTimeout(r, 800));
       }
 
-      try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-      } catch (err) {
-        console.warn('Não foi possível salvar cache de categorias:', err.message);
-      }
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)); } catch (err) { console.warn(err.message); }
     };
 
     const timer = setTimeout(fetchCategories, 1500);
@@ -590,9 +702,7 @@ function PortfolioTab({ session, currency }) {
     let parsedAmount = parseFloat(amount);
     const parsedTotalSpent = parseFloat(totalSpent);
 
-    if (txType === "sell") {
-      parsedAmount *= -1;
-    }
+    if (txType === "sell") parsedAmount *= -1;
 
     const existingRow = portfolio.find((p) => p.coin_id === selectedCoin.id);
 
@@ -746,7 +856,7 @@ function PortfolioTab({ session, currency }) {
         return;
       }
 
-      const confirmed = window.confirm(`Importar ${coinGroups.length} moeda(s) do CSV? As transações serão somadas às posições existentes.`);
+      const confirmed = window.confirm(`Importar ${coinGroups.length} moeda(s) do CSV?`);
       if (!confirmed) return;
 
       for (const group of coinGroups) {
@@ -764,7 +874,7 @@ function PortfolioTab({ session, currency }) {
       alert('Importação concluída!');
     } catch (err) {
       console.error('Erro ao importar CSV:', err);
-      alert('Não foi possível ler esse CSV. Confira o formato e tente de novo.');
+      alert('Não foi possível ler esse CSV.');
     } finally {
       e.target.value = '';
     }
@@ -804,7 +914,7 @@ function PortfolioTab({ session, currency }) {
   };
 
   const handleDeleteTx = async (tx) => {
-    const confirmed = window.confirm('Excluir essa transação? A quantidade e o preço médio da moeda serão recalculados.');
+    const confirmed = window.confirm('Excluir essa transação? A quantidade e o preço médio serão recalculados.');
     if (!confirmed) return;
 
     const row = portfolio.find((p) => p.id === tx.portfolioId);
@@ -817,7 +927,6 @@ function PortfolioTab({ session, currency }) {
     await loadPortfolio();
   };
 
-  // CÁLCULOS GLOBAIS AJUSTADOS: Total Investido Real
   const totalInvested = portfolio.reduce((acc, c) => acc + getItemTotalPaid(c, currency), 0);
 
   const currentValue = portfolio.reduce((acc, c) => {
@@ -899,7 +1008,6 @@ function PortfolioTab({ session, currency }) {
   });
 
   const transactionDates = [...new Set(allTransactions.map(t => t.date))];
-
   const isLoadingSummary = fetchingPrices && portfolio.length > 0;
 
   return (
@@ -934,7 +1042,7 @@ function PortfolioTab({ session, currency }) {
         </div>
       </div>
 
-      {/* Gráficos */}
+      {/* Gráficos Consolidados */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', boxSizing: 'border-box' }}>
           <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>
@@ -942,7 +1050,7 @@ function PortfolioTab({ session, currency }) {
           </span>
           {timeSeriesData.length < 2 ? (
             <p style={{ color: 'var(--text-faint)', fontSize: '12px', textAlign: 'center', margin: '50px 0' }}>
-              Ainda estamos coletando o histórico diário. Volte amanhã pra ver a evolução real do seu portfólio.
+              Ainda estamos coletando o histórico diário. Volte amanhã pra ver a evolução real.
             </p>
           ) : (
           <div style={{ width: '100%', height: '180px' }}>
@@ -1003,7 +1111,7 @@ function PortfolioTab({ session, currency }) {
         </div>
       </div>
 
-      {/* Realizado vs Não Realizado + Melhor/Pior Ativo */}
+      {/* Realizado vs Não Realizado + Destaques */}
       {portfolio.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
           <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', boxSizing: 'border-box' }}>
@@ -1235,7 +1343,7 @@ function PortfolioTab({ session, currency }) {
         )}
       </div>
 
-      {/* Modal de edição de transação */}
+      {/* Modal de Edição */}
       {editingTx && (
         <div
           onClick={() => setEditingTx(null)}
@@ -1308,6 +1416,16 @@ function PortfolioTab({ session, currency }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL DO GRÁFICO INDIVIDUAL DA MOEDA */}
+      {selectedChartAsset && (
+        <AssetChartModal
+          asset={selectedChartAsset}
+          currency={currency}
+          buyUnitPrice={selectedChartAsset.amount > 0 ? getItemTotalPaid(selectedChartAsset, currency) / selectedChartAsset.amount : 0}
+          onClose={() => setSelectedChartAsset(null)}
+        />
       )}
 
       {/* TABELA DETALHADA: MEUS ATIVOS */}
@@ -1385,16 +1503,9 @@ function PortfolioTab({ session, currency }) {
               <tbody>
                 {filteredPortfolio.map((item) => {
                   const currentUnitPrice = prices[item.coin_id]?.[currKey] || 0;
-
-                  // NOVO: Total Pago REAL vindo direto do histórico
                   const totalPaid = getItemTotalPaid(item, currency);
-
-                  // Preço médio unitário derivado do Total Pago Real
                   const buyUnitPrice = item.amount > 0 ? totalPaid / item.amount : 0;
-
                   const totalCurrentValue = currentUnitPrice * item.amount;
-
-                  // Profit / Loss exato
                   const itemPnl = totalCurrentValue - totalPaid;
                   const itemPnlPct = totalPaid > 0 ? (itemPnl / totalPaid) * 100 : 0;
 
@@ -1412,6 +1523,13 @@ function PortfolioTab({ session, currency }) {
                           <span>
                             {item.coin_name} <span style={{ color: 'var(--text-faint)', fontSize: '10px' }}>({item.coin_symbol.toUpperCase()})</span>
                           </span>
+                          <button
+                            onClick={() => setSelectedChartAsset(item)}
+                            title="Ver gráfico de 30 dias"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '2px', marginLeft: '2px' }}
+                          >
+                            📊
+                          </button>
                         </div>
                       </td>
 
@@ -1555,7 +1673,7 @@ function MarketTab({ session, currency }) {
       <div style={{ marginBottom: '14px' }}>
         <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', color: 'var(--text)' }}>🌐 Principais Criptomoedas</h3>
         <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '12px' }}>
-          Clique na estrela ⭐ para favoritar a moeda. Seus favoritos são salvos no Supabase!
+          Clique na estrela ⭐ para favoritar a moeda.
         </p>
       </div>
 
