@@ -116,14 +116,20 @@ function MainDashboard({ session, theme, setTheme }) {
   const [activeTab, setActiveTab] = useState('portfolio');
   const [currency, setCurrency] = useState('BRL');
   const [hasVisitedMarket, setHasVisitedMarket] = useState(false);
+  const [prefilledCoin, setPrefilledCoin] = useState(null);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     if (tab === 'market') setHasVisitedMarket(true);
   };
 
+  const handleSelectCoinForPortfolio = (coin) => {
+    setPrefilledCoin(coin);
+    setActiveTab('portfolio');
+  };
+
   return (
-    <div style={{ width: '100%', maxWidth: '850px', padding: '20px 16px 40px 16px', boxSizing: 'border-box' }}>
+    <div style={{ width: '100%', maxWidth: '900px', padding: '20px 16px 40px 16px', boxSizing: 'border-box' }}>
 
       {/* Header */}
       <header style={{ width: '100%', marginBottom: '16px', boxSizing: 'border-box' }}>
@@ -204,11 +210,11 @@ function MainDashboard({ session, theme, setTheme }) {
       </header>
 
       <div style={{ display: activeTab === 'portfolio' ? 'block' : 'none' }}>
-        <PortfolioTab session={session} currency={currency} />
+        <PortfolioTab session={session} currency={currency} prefilledCoin={prefilledCoin} setPrefilledCoin={setPrefilledCoin} />
       </div>
       {hasVisitedMarket && (
         <div style={{ display: activeTab === 'market' ? 'block' : 'none' }}>
-          <MarketTab session={session} currency={currency} />
+          <MarketTab session={session} currency={currency} onAddToPortfolio={handleSelectCoinForPortfolio} />
         </div>
       )}
 
@@ -235,7 +241,6 @@ function AssetChartModal({ asset, currency, buyUnitPrice, onClose }) {
     if (cached) {
       try {
         const { data, ts } = JSON.parse(cached);
-        // Cache de 30 minutos
         if (now - ts < 30 * 60 * 1000) {
           setChartData(data);
           setLoading(false);
@@ -287,7 +292,6 @@ function AssetChartModal({ asset, currency, buyUnitPrice, onClose }) {
     <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px', width: '100%', maxWidth: '620px', boxSizing: 'border-box' }}>
         
-        {/* Cabeçalho do Modal */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '17px', color: 'var(--text)' }}>
@@ -298,7 +302,6 @@ function AssetChartModal({ asset, currency, buyUnitPrice, onClose }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '18px', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
         </div>
 
-        {/* Corpo do Modal */}
         {loading ? (
           <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '50px 0', fontSize: '13px' }}>Carregando dados históricos...</p>
         ) : errorMsg ? (
@@ -347,7 +350,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, onClose }) {
 }
 
 // --- ABA 1: PORTFÓLIO ---
-function PortfolioTab({ session, currency }) {
+function PortfolioTab({ session, currency, prefilledCoin, setPrefilledCoin }) {
   const [portfolio, setPortfolio] = useState([]);
   const [prices, setPrices] = useState({});
   const [fetchingPrices, setFetchingPrices] = useState(true);
@@ -368,9 +371,14 @@ function PortfolioTab({ session, currency }) {
   const [editingTx, setEditingTx] = useState(null);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const [officialExchangeRate, setOfficialExchangeRate] = useState(null);
-
-  // NOVO: Estado para abrir o gráfico individual do ativo
   const [selectedChartAsset, setSelectedChartAsset] = useState(null);
+
+  useEffect(() => {
+    if (prefilledCoin) {
+      setSelectedCoin(prefilledCoin);
+      setPrefilledCoin(null);
+    }
+  }, [prefilledCoin, setPrefilledCoin]);
 
   const loadPortfolio = async () => {
     const { data, error } = await supabase
@@ -1595,10 +1603,11 @@ function PortfolioTab({ session, currency }) {
 }
 
 // --- ABA 2: MERCADO ---
-function MarketTab({ session, currency }) {
+function MarketTab({ session, currency, onAddToPortfolio }) {
   const [marketCoins, setMarketCoins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [favorites, setFavorites] = useState([]);
+  const [filterQuery, setFilterQuery] = useState('');
 
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
   const vsCurrency = currency.toLowerCase();
@@ -1622,7 +1631,7 @@ function MarketTab({ session, currency }) {
       setLoading(true);
       try {
         const res = await fetch(
-          `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${vsCurrency}&order=market_cap_desc&per_page=25&page=1&sparkline=false`
+          `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${vsCurrency}&order=market_cap_desc&per_page=30&page=1&sparkline=false&price_change_percentage=7d,30d`
         );
         const data = await res.json();
         setMarketCoins(data || []);
@@ -1660,7 +1669,12 @@ function MarketTab({ session, currency }) {
     }
   };
 
-  const sortedCoins = [...marketCoins].sort((a, b) => {
+  const filteredCoins = marketCoins.filter(c => 
+    c.name.toLowerCase().includes(filterQuery.toLowerCase()) || 
+    c.symbol.toLowerCase().includes(filterQuery.toLowerCase())
+  );
+
+  const sortedCoins = [...filteredCoins].sort((a, b) => {
     const aFav = favorites.includes(a.id);
     const bFav = favorites.includes(b.id);
     if (aFav && !bFav) return -1;
@@ -1668,88 +1682,168 @@ function MarketTab({ session, currency }) {
     return a.market_cap_rank - b.market_cap_rank;
   });
 
+  const topGainer = marketCoins.length > 0 
+    ? [...marketCoins].sort((a,b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0))[0]
+    : null;
+
+  const topLoser = marketCoins.length > 0 
+    ? [...marketCoins].sort((a,b) => (a.price_change_percentage_24h || 0) - (b.price_change_percentage_24h || 0))[0]
+    : null;
+
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', width: '100%', boxSizing: 'border-box' }}>
-      <div style={{ marginBottom: '14px' }}>
-        <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', color: 'var(--text)' }}>🌐 Principais Criptomoedas</h3>
-        <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '12px' }}>
-          Clique na estrela ⭐ para favoritar a moeda.
-        </p>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%', boxSizing: 'border-box' }}>
+      
+      {/* Cards de Destaques do Mercado */}
+      {!loading && marketCoins.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+          {topGainer && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '12px 16px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>🚀 Maior Alta (24h)</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                <img src={topGainer.image} alt={topGainer.name} width="20" height="20" />
+                <strong style={{ color: 'var(--text)', fontSize: '14px' }}>{topGainer.name}</strong>
+                <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '13px' }}>
+                  +{topGainer.price_change_percentage_24h?.toFixed(2)}%
+                </span>
+              </div>
+            </div>
+          )}
 
-      {loading ? (
-        <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '20px 0' }}>Carregando mercado...</p>
-      ) : (
-        <div style={{ width: '100%', overflowX: 'auto' }}>
-          <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>
-                <th style={{ padding: '8px', width: '30px' }}>Fav</th>
-                <th style={{ padding: '8px' }}>Moeda</th>
-                <th style={{ padding: '8px' }}>Preço</th>
-                <th style={{ padding: '8px' }}>24h %</th>
-                <th style={{ padding: '8px' }}>Máx 24h</th>
-                <th style={{ padding: '8px' }}>Mín 24h</th>
-                <th style={{ padding: '8px', textAlign: 'right' }}>Cap. Mercado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedCoins.map((coin) => {
-                const isFav = favorites.includes(coin.id);
-
-                return (
-                  <tr
-                    key={coin.id}
-                    style={{
-                      borderBottom: '1px solid var(--border)',
-                      color: 'var(--text)',
-                      fontSize: '12px',
-                      background: isFav ? 'rgba(59, 130, 246, 0.05)' : 'transparent'
-                    }}
-                  >
-                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                      <button
-                        onClick={() => toggleFavorite(coin.id)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: 0 }}
-                      >
-                        {isFav ? '⭐' : '☆'}
-                      </button>
-                    </td>
-
-                    <td style={{ padding: '10px 8px', fontWeight: '600' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <img src={coin.image} alt={coin.name} width="18" height="18" />
-                        <span>{coin.name}</span>
-                        <span style={{ color: 'var(--text-faint)', fontSize: '10px' }}>{coin.symbol.toUpperCase()}</span>
-                      </div>
-                    </td>
-
-                    <td style={{ padding: '10px 8px', fontWeight: '700' }}>
-                      {currencySymbol} {coin.current_price?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2 })}
-                    </td>
-
-                    <td style={{ padding: '10px 8px', color: coin.price_change_percentage_24h >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>
-                      {coin.price_change_percentage_24h >= 0 ? '+' : ''}{coin.price_change_percentage_24h?.toFixed(2)}%
-                    </td>
-
-                    <td style={{ padding: '10px 8px', color: 'var(--text-secondary)' }}>
-                      {currencySymbol} {coin.high_24h?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2 })}
-                    </td>
-
-                    <td style={{ padding: '10px 8px', color: 'var(--text-secondary)' }}>
-                      {currencySymbol} {coin.low_24h?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2 })}
-                    </td>
-
-                    <td style={{ padding: '10px 8px', textAlign: 'right', color: 'var(--text-muted)' }}>
-                      {currencySymbol} {coin.market_cap?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US')}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {topLoser && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '12px 16px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>📉 Maior Baixa (24h)</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                <img src={topLoser.image} alt={topLoser.name} width="20" height="20" />
+                <strong style={{ color: 'var(--text)', fontSize: '14px' }}>{topLoser.name}</strong>
+                <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '13px' }}>
+                  {topLoser.price_change_percentage_24h?.toFixed(2)}%
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
+          <div>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', color: 'var(--text)' }}>🌐 Principais Criptomoedas</h3>
+            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '12px' }}>
+              Acompanhe preços atuais, variações recentes e preço de 1 mês atrás.
+            </p>
+          </div>
+
+          <input
+            type="text"
+            placeholder="🔍 Filtrar moeda..."
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+            style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12px', width: '180px' }}
+          />
+        </div>
+
+        {loading ? (
+          <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '20px 0' }}>Carregando mercado...</p>
+        ) : (
+          <div style={{ width: '100%', overflowX: 'auto' }}>
+            <table style={{ width: '100%', minWidth: '780px', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '8px', width: '30px' }}>Fav</th>
+                  <th style={{ padding: '8px' }}>Moeda</th>
+                  <th style={{ padding: '8px' }}>Preço Hoje</th>
+                  <th style={{ padding: '8px' }}>24h %</th>
+                  <th style={{ padding: '8px' }}>7d %</th>
+                  <th style={{ padding: '8px' }}>Há 1 Mês</th>
+                  <th style={{ padding: '8px' }}>30d %</th>
+                  <th style={{ padding: '8px', textAlign: 'right' }}>Cap. Mercado</th>
+                  <th style={{ padding: '8px', textAlign: 'center' }}>Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedCoins.map((coin) => {
+                  const isFav = favorites.includes(coin.id);
+                  const change30d = coin.price_change_percentage_30d_in_currency;
+                  
+                  // Cálculo do preço estimado há 1 mês (30 dias atrás)
+                  const price1MonthAgo = (change30d !== null && change30d !== undefined)
+                    ? coin.current_price / (1 + change30d / 100)
+                    : null;
+
+                  return (
+                    <tr
+                      key={coin.id}
+                      style={{
+                        borderBottom: '1px solid var(--border)',
+                        color: 'var(--text)',
+                        fontSize: '12px',
+                        background: isFav ? 'rgba(59, 130, 246, 0.05)' : 'transparent'
+                      }}
+                    >
+                      <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                        <button
+                          onClick={() => toggleFavorite(coin.id)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: 0 }}
+                        >
+                          {isFav ? '⭐' : '☆'}
+                        </button>
+                      </td>
+
+                      <td style={{ padding: '10px 8px', fontWeight: '600' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <img src={coin.image} alt={coin.name} width="18" height="18" />
+                          <span>{coin.name}</span>
+                          <span style={{ color: 'var(--text-faint)', fontSize: '10px' }}>{coin.symbol.toUpperCase()}</span>
+                        </div>
+                      </td>
+
+                      <td style={{ padding: '10px 8px', fontWeight: '700', color: '#38bdf8' }}>
+                        {currencySymbol} {coin.current_price?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: coin.current_price < 1 ? 4 : 2 })}
+                      </td>
+
+                      <td style={{ padding: '10px 8px', color: coin.price_change_percentage_24h >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>
+                        {coin.price_change_percentage_24h >= 0 ? '+' : ''}{coin.price_change_percentage_24h?.toFixed(2)}%
+                      </td>
+
+                      <td style={{ padding: '10px 8px', color: coin.price_change_percentage_7d_in_currency >= 0 ? '#10b981' : '#ef4444', fontWeight: '600' }}>
+                        {coin.price_change_percentage_7d_in_currency !== undefined && coin.price_change_percentage_7d_in_currency !== null ? (
+                          <>{coin.price_change_percentage_7d_in_currency >= 0 ? '+' : ''}{coin.price_change_percentage_7d_in_currency.toFixed(2)}%</>
+                        ) : '—'}
+                      </td>
+
+                      <td style={{ padding: '10px 8px', color: 'var(--text-secondary)' }}>
+                        {price1MonthAgo ? (
+                          <>{currencySymbol} {price1MonthAgo.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: price1MonthAgo < 1 ? 4 : 2 })}</>
+                        ) : '—'}
+                      </td>
+
+                      <td style={{ padding: '10px 8px', color: change30d >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>
+                        {change30d !== undefined && change30d !== null ? (
+                          <>{change30d >= 0 ? '+' : ''}{change30d.toFixed(2)}%</>
+                        ) : '—'}
+                      </td>
+
+                      <td style={{ padding: '10px 8px', textAlign: 'right', color: 'var(--text-muted)' }}>
+                        {currencySymbol} {coin.market_cap?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US')}
+                      </td>
+
+                      <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                        <button
+                          onClick={() => onAddToPortfolio(coin)}
+                          title="Adicionar esta moeda à sua carteira"
+                          style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: '#3b82f6', cursor: 'pointer', fontWeight: 'bold', fontSize: '11px' }}
+                        >
+                          + Portfólio
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
