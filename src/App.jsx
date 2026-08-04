@@ -116,16 +116,10 @@ function MainDashboard({ session, theme, setTheme }) {
   const [activeTab, setActiveTab] = useState('portfolio');
   const [currency, setCurrency] = useState('BRL');
   const [hasVisitedMarket, setHasVisitedMarket] = useState(false);
-  const [prefilledCoin, setPrefilledCoin] = useState(null);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     if (tab === 'market') setHasVisitedMarket(true);
-  };
-
-  const handleSelectCoinForPortfolio = (coin) => {
-    setPrefilledCoin(coin);
-    setActiveTab('portfolio');
   };
 
   return (
@@ -210,11 +204,11 @@ function MainDashboard({ session, theme, setTheme }) {
       </header>
 
       <div style={{ display: activeTab === 'portfolio' ? 'block' : 'none' }}>
-        <PortfolioTab session={session} currency={currency} prefilledCoin={prefilledCoin} setPrefilledCoin={setPrefilledCoin} />
+        <PortfolioTab session={session} currency={currency} />
       </div>
       {hasVisitedMarket && (
         <div style={{ display: activeTab === 'market' ? 'block' : 'none' }}>
-          <MarketTab session={session} currency={currency} onAddToPortfolio={handleSelectCoinForPortfolio} />
+          <MarketTab session={session} currency={currency} />
         </div>
       )}
 
@@ -350,7 +344,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, onClose }) {
 }
 
 // --- ABA 1: PORTFÓLIO ---
-function PortfolioTab({ session, currency, prefilledCoin, setPrefilledCoin }) {
+function PortfolioTab({ session, currency }) {
   const [portfolio, setPortfolio] = useState([]);
   const [prices, setPrices] = useState({});
   const [fetchingPrices, setFetchingPrices] = useState(true);
@@ -372,13 +366,6 @@ function PortfolioTab({ session, currency, prefilledCoin, setPrefilledCoin }) {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const [officialExchangeRate, setOfficialExchangeRate] = useState(null);
   const [selectedChartAsset, setSelectedChartAsset] = useState(null);
-
-  useEffect(() => {
-    if (prefilledCoin) {
-      setSelectedCoin(prefilledCoin);
-      setPrefilledCoin(null);
-    }
-  }, [prefilledCoin, setPrefilledCoin]);
 
   const loadPortfolio = async () => {
     const { data, error } = await supabase
@@ -1603,7 +1590,7 @@ function PortfolioTab({ session, currency, prefilledCoin, setPrefilledCoin }) {
 }
 
 // --- ABA 2: MERCADO ---
-function MarketTab({ session, currency, onAddToPortfolio }) {
+function MarketTab({ session, currency }) {
   const [marketCoins, setMarketCoins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [favorites, setFavorites] = useState([]);
@@ -1690,19 +1677,27 @@ function MarketTab({ session, currency, onAddToPortfolio }) {
     ? [...marketCoins].sort((a,b) => (a.price_change_percentage_24h || 0) - (b.price_change_percentage_24h || 0))[0]
     : null;
 
+  const topVolume = marketCoins.length > 0
+    ? [...marketCoins].sort((a,b) => (b.total_volume || 0) - (a.total_volume || 0))[0]
+    : null;
+
+  const topGainer30d = marketCoins.length > 0
+    ? [...marketCoins].sort((a,b) => (b.price_change_percentage_30d_in_currency || 0) - (a.price_change_percentage_30d_in_currency || 0))[0]
+    : null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%', boxSizing: 'border-box' }}>
       
       {/* Cards de Destaques do Mercado */}
       {!loading && marketCoins.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
           {topGainer && (
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '12px 16px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>🚀 Maior Alta (24h)</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-                <img src={topGainer.image} alt={topGainer.name} width="20" height="20" />
-                <strong style={{ color: 'var(--text)', fontSize: '14px' }}>{topGainer.name}</strong>
-                <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '13px' }}>
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '12px 14px' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>🚀 Maior Alta (24h)</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+                <img src={topGainer.image} alt={topGainer.name} width="18" height="18" />
+                <strong style={{ color: 'var(--text)', fontSize: '13px' }}>{topGainer.symbol.toUpperCase()}</strong>
+                <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '12px', marginLeft: 'auto' }}>
                   +{topGainer.price_change_percentage_24h?.toFixed(2)}%
                 </span>
               </div>
@@ -1710,13 +1705,39 @@ function MarketTab({ session, currency, onAddToPortfolio }) {
           )}
 
           {topLoser && (
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '12px 16px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>📉 Maior Baixa (24h)</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-                <img src={topLoser.image} alt={topLoser.name} width="20" height="20" />
-                <strong style={{ color: 'var(--text)', fontSize: '14px' }}>{topLoser.name}</strong>
-                <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '13px' }}>
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '12px 14px' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>📉 Maior Baixa (24h)</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+                <img src={topLoser.image} alt={topLoser.name} width="18" height="18" />
+                <strong style={{ color: 'var(--text)', fontSize: '13px' }}>{topLoser.symbol.toUpperCase()}</strong>
+                <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '12px', marginLeft: 'auto' }}>
                   {topLoser.price_change_percentage_24h?.toFixed(2)}%
+                </span>
+              </div>
+            </div>
+          )}
+
+          {topVolume && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '12px 14px' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>🔥 Maior Volume (24h)</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+                <img src={topVolume.image} alt={topVolume.name} width="18" height="18" />
+                <strong style={{ color: 'var(--text)', fontSize: '13px' }}>{topVolume.symbol.toUpperCase()}</strong>
+                <span style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '11px', marginLeft: 'auto' }}>
+                  {currencySymbol} {(topVolume.total_volume / 1e9).toFixed(2)}B
+                </span>
+              </div>
+            </div>
+          )}
+
+          {topGainer30d && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '12px 14px' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>🌟 Destaque 30 Dias</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+                <img src={topGainer30d.image} alt={topGainer30d.name} width="18" height="18" />
+                <strong style={{ color: 'var(--text)', fontSize: '13px' }}>{topGainer30d.symbol.toUpperCase()}</strong>
+                <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '12px', marginLeft: 'auto' }}>
+                  +{topGainer30d.price_change_percentage_30d_in_currency?.toFixed(2)}%
                 </span>
               </div>
             </div>
@@ -1746,7 +1767,7 @@ function MarketTab({ session, currency, onAddToPortfolio }) {
           <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '20px 0' }}>Carregando mercado...</p>
         ) : (
           <div style={{ width: '100%', overflowX: 'auto' }}>
-            <table style={{ width: '100%', minWidth: '780px', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <table style={{ width: '100%', minWidth: '720px', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>
                   <th style={{ padding: '8px', width: '30px' }}>Fav</th>
@@ -1757,7 +1778,6 @@ function MarketTab({ session, currency, onAddToPortfolio }) {
                   <th style={{ padding: '8px' }}>Há 1 Mês</th>
                   <th style={{ padding: '8px' }}>30d %</th>
                   <th style={{ padding: '8px', textAlign: 'right' }}>Cap. Mercado</th>
-                  <th style={{ padding: '8px', textAlign: 'center' }}>Ação</th>
                 </tr>
               </thead>
               <tbody>
@@ -1765,7 +1785,6 @@ function MarketTab({ session, currency, onAddToPortfolio }) {
                   const isFav = favorites.includes(coin.id);
                   const change30d = coin.price_change_percentage_30d_in_currency;
                   
-                  // Cálculo do preço estimado há 1 mês (30 dias atrás)
                   const price1MonthAgo = (change30d !== null && change30d !== undefined)
                     ? coin.current_price / (1 + change30d / 100)
                     : null;
@@ -1825,16 +1844,6 @@ function MarketTab({ session, currency, onAddToPortfolio }) {
 
                       <td style={{ padding: '10px 8px', textAlign: 'right', color: 'var(--text-muted)' }}>
                         {currencySymbol} {coin.market_cap?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US')}
-                      </td>
-
-                      <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                        <button
-                          onClick={() => onAddToPortfolio(coin)}
-                          title="Adicionar esta moeda à sua carteira"
-                          style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg)', color: '#3b82f6', cursor: 'pointer', fontWeight: 'bold', fontSize: '11px' }}
-                        >
-                          + Portfólio
-                        </button>
                       </td>
                     </tr>
                   );
