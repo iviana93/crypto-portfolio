@@ -362,6 +362,8 @@ function PortfolioTab({ session, currency }) {
   const [walletLabel, setWalletLabel] = useState('');
 
   const [walletFilter, setWalletFilter] = useState('todas');
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState('');
   const [editingTx, setEditingTx] = useState(null);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
   const [officialExchangeRate, setOfficialExchangeRate] = useState(null);
@@ -694,42 +696,69 @@ function PortfolioTab({ session, currency }) {
       return;
     }
 
-    let parsedAmount = parseFloat(amount);
-    const parsedTotalSpent = parseFloat(totalSpent);
+    // Trava contra duplo clique / duplo submit enquanto uma operação já está sendo salva.
+    if (saving) return;
+    setSaving(true);
 
-    if (txType === "sell") parsedAmount *= -1;
+    try {
+      let parsedAmount = parseFloat(amount);
+      const parsedTotalSpent = parseFloat(totalSpent);
 
-    const existingRow = portfolio.find((p) => p.coin_id === selectedCoin.id);
+      if (txType === "sell") parsedAmount *= -1;
 
-    if (!existingRow && txType === "sell") {
-      alert("Você ainda não possui essa moeda na carteira.");
-      return;
+      // IMPORTANTE: buscamos a posição direto no banco (em vez de usar o estado
+      // local `portfolio`, que pode estar desatualizado) antes de mesclar o
+      // histórico. Isso corrige o bug em que uma segunda compra da mesma moeda
+      // "sumia": se o estado local ainda não tivesse sido atualizado após a
+      // primeira compra, a segunda era salva como se fosse a primeira,
+      // sobrescrevendo o histórico anterior em vez de somar a ele.
+      const { data: freshRow, error: fetchError } = await supabase
+        .from("portfolio")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .eq("coin_id", selectedCoin.id)
+        .maybeSingle();
+
+      if (fetchError) {
+        alert(fetchError.message);
+        return;
+      }
+
+      if (!freshRow && txType === "sell") {
+        alert("Você ainda não possui essa moeda na carteira.");
+        return;
+      }
+      if (freshRow && txType === "sell" && Math.abs(parsedAmount) > freshRow.amount) {
+        alert(`Você só possui ${freshRow.amount} ${freshRow.coin_symbol.toUpperCase()} para vender.`);
+        return;
+      }
+
+      const newTx = {
+        date: txDate,
+        type: txType,
+        amount: parsedAmount,
+        total: parsedTotalSpent,
+        currency,
+      };
+
+      const combinedHistory = [...(freshRow?.history || []), newTx];
+      const ok = await savePositionFromHistory(freshRow, selectedCoin, combinedHistory, walletLabel);
+      if (!ok) return;
+
+      await loadPortfolio();
+
+      setAmount("");
+      setTotalSpent("");
+      setSelectedCoin(null);
+      setSearchQuery("");
+      setSearchResults([]);
+      setWalletLabel("");
+
+      setToast(`✅ ${txType === "buy" ? "Compra" : "Venda"} de ${selectedCoin.name} registrada com sucesso!`);
+      setTimeout(() => setToast(""), 3500);
+    } finally {
+      setSaving(false);
     }
-    if (existingRow && txType === "sell" && Math.abs(parsedAmount) > existingRow.amount) {
-      alert(`Você só possui ${existingRow.amount} ${existingRow.coin_symbol.toUpperCase()} para vender.`);
-      return;
-    }
-
-    const newTx = {
-      date: txDate,
-      type: txType,
-      amount: parsedAmount,
-      total: parsedTotalSpent,
-      currency,
-    };
-
-    const combinedHistory = [...(existingRow?.history || []), newTx];
-    const ok = await savePositionFromHistory(existingRow, selectedCoin, combinedHistory, walletLabel);
-    if (!ok) return;
-
-    await loadPortfolio();
-
-    setAmount("");
-    setTotalSpent("");
-    setSelectedCoin(null);
-    setSearchQuery("");
-    setSearchResults([]);
-    setWalletLabel("");
   };
 
   const handleDeleteAsset = async (id, coinName) => {
@@ -1002,11 +1031,34 @@ function PortfolioTab({ session, currency }) {
     }
   });
 
-  const transactionDates = [...new Set(allTransactions.map(t => t.date))];
+  const transactionDates = [...new Set(allTransactions.map(t => t.date))]
+    .sort((a, b) => new Date(b) - new Date(a));
   const isLoadingSummary = fetchingPrices && portfolio.length > 0;
 
   return (
     <>
+      {/* Toast de confirmação */}
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#10b981',
+            color: '#fff',
+            padding: '10px 18px',
+            borderRadius: '10px',
+            fontSize: '13px',
+            fontWeight: '700',
+            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.4)',
+            zIndex: 2000,
+          }}
+        >
+          {toast}
+        </div>
+      )}
+
       {/* Resumo do Patrimônio */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
@@ -1263,8 +1315,12 @@ function PortfolioTab({ session, currency }) {
             style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '13px', boxSizing: 'border-box' }}
           />
 
-          <button type="submit" style={{ padding: '10px', background: txType === 'buy' ? '#10b981' : '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>
-            Salvar Operação
+          <button
+            type="submit"
+            disabled={saving}
+            style={{ padding: '10px', background: txType === 'buy' ? '#10b981' : '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '13px', opacity: saving ? 0.65 : 1 }}
+          >
+            {saving ? 'Salvando...' : 'Salvar Operação'}
           </button>
         </form>
       </div>
@@ -1280,25 +1336,33 @@ function PortfolioTab({ session, currency }) {
           {transactionDates.length === 0 ? (
             <p style={{ color: 'var(--text-faint)', fontSize: '12px', margin: 0 }}>Nenhuma transação registrada com data.</p>
           ) : (
-            transactionDates.map((date) => (
-              <button
-                key={date}
-                onClick={() => setSelectedCalendarDate(selectedCalendarDate === date ? null : date)}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  border: selectedCalendarDate === date ? '2px solid #3b82f6' : '1px solid #10b981',
-                  background: 'var(--bg)',
-                  color: 'var(--text)',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                📆 {date.split('-').reverse().join('/')}
-              </button>
-            ))
+            transactionDates.map((date) => {
+              const countForDate = allTransactions.filter((t) => t.date === date).length;
+              return (
+                <button
+                  key={date}
+                  onClick={() => setSelectedCalendarDate(selectedCalendarDate === date ? null : date)}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: selectedCalendarDate === date ? '2px solid #3b82f6' : '1px solid #10b981',
+                    background: 'var(--bg)',
+                    color: 'var(--text)',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  📆 {date.split('-').reverse().join('/')}
+                  {countForDate > 1 && (
+                    <span style={{ marginLeft: '6px', background: '#3b82f6', color: '#fff', borderRadius: '10px', padding: '1px 6px', fontSize: '10px' }}>
+                      {countForDate}
+                    </span>
+                  )}
+                </button>
+              );
+            })
           )}
         </div>
 
@@ -1504,6 +1568,7 @@ function PortfolioTab({ session, currency }) {
                   const itemPnl = totalCurrentValue - totalPaid;
                   const itemPnlPct = totalPaid > 0 ? (itemPnl / totalPaid) * 100 : 0;
 
+                  const buyCount = (item.history || []).filter((tx) => tx.type === 'buy').length;
                   const purchaseDate = item.history && item.history[0]?.date
                     ? item.history[0].date.split('-').reverse().join('/')
                     : 'N/A';
@@ -1540,6 +1605,11 @@ function PortfolioTab({ session, currency }) {
 
                       <td style={{ padding: '10px 8px', color: 'var(--text-muted)', fontSize: '11px' }}>
                         📅 {purchaseDate}
+                        {buyCount > 1 && (
+                          <span style={{ marginLeft: '6px', background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: '10px', padding: '1px 6px', fontSize: '10px' }}>
+                            {buyCount}x compras
+                          </span>
+                        )}
                       </td>
 
                       <td style={{ padding: '10px 8px', fontWeight: '500' }}>
