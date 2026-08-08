@@ -281,11 +281,10 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
     fetchChart();
   }, [asset, vsCurrency]);
 
-  // Em vez de tentar posicionar um <ReferenceDot> "por fora" combinando strings de
-  // data (o que ficava impreciso e cortava os pontos fora da área do gráfico),
-  // anexamos a compra diretamente na linha correspondente dos dados do gráfico.
-  // Assim o Recharts posiciona o marcador usando exatamente o mesmo eixo X da
-  // linha de preço, sem risco de desalinhamento.
+  // O ponto laranja marca O DIA em que você comprou, sempre em cima da própria
+  // linha de mercado (para não sugerir que "o preço pago" é a cotação da moeda).
+  // O valor que você realmente pagou fica guardado à parte (buyPaidPrice) e só
+  // aparece rotulado como tal no tooltip e na lista abaixo do gráfico.
   const chartDataWithMarkers = chartData.map((point) => {
     const matches = purchases.filter((p) => {
       const d = new Date(`${p.date}T00:00:00`);
@@ -295,12 +294,33 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
     if (matches.length === 0) return point;
 
     const totalQty = matches.reduce((s, m) => s + m.amount, 0);
-    const weightedPrice = totalQty > 0
+    const weightedPaidPrice = totalQty > 0
       ? matches.reduce((s, m) => s + m.unitPrice * m.amount, 0) / totalQty
       : matches[0].unitPrice;
 
-    return { ...point, buyMarker: weightedPrice, buyCount: matches.length };
+    return { ...point, buyMarker: point.price, buyPaidPrice: weightedPaidPrice, buyCount: matches.length };
   });
+
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || payload.length === 0) return null;
+    const row = payload[0]?.payload;
+    const fmt = (v) => `${currencySymbol} ${Number(v).toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+
+    return (
+      <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: 'var(--text)' }}>
+        <p style={{ margin: '0 0 6px 0', fontWeight: 700 }}>Data: {row?.fullDate || label}</p>
+        <p style={{ margin: '2px 0', color: '#60a5fa' }}>
+          🔵 Cotação de mercado: <strong>{fmt(row?.price)}</strong>
+        </p>
+        {row?.buyPaidPrice != null && (
+          <p style={{ margin: '2px 0', color: '#f59e0b' }}>
+            🟠 Preço que você pagou: <strong>{fmt(row.buyPaidPrice)}</strong>
+            {row.buyCount > 1 ? ` (média de ${row.buyCount} compras)` : ''}
+          </p>
+        )}
+      </div>
+    );
+  };
 
   if (!asset) return null;
 
@@ -337,13 +357,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
                   <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={11} interval="preserveStartEnd" />
                   <YAxis stroke="var(--text-muted)" fontSize={11} domain={['auto', 'auto']} tickFormatter={(v) => `${currencySymbol}${v}`} />
                   <Tooltip
-                    formatter={(val, name) => {
-                      const formattedVal = `${currencySymbol} ${Number(val).toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
-                      if (name === 'buyMarker') return [formattedVal, '🟠 Sua compra'];
-                      return [formattedVal, '🔵 Cotação de mercado'];
-                    }}
-                    labelFormatter={(label, payload) => payload[0]?.payload?.fullDate ? `Data: ${payload[0].payload.fullDate}` : label}
-                    contentStyle={{ background: 'var(--bg)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px' }}
+                    content={<CustomTooltip />}
                   />
                   {buyUnitPrice > 0 && (
                     <ReferenceLine
@@ -381,7 +395,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
 
             <div style={{ marginTop: '12px', padding: '10px 14px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
               <span>🟢 <strong>Linha Verde:</strong> preço médio de compra ({currencySymbol} {buyUnitPrice.toFixed(2)})</span>
-              <span>🟠 <strong>Pontos Laranja:</strong> suas compras (últimos 30 dias)</span>
+              <span>🟠 <strong>Pontos Laranja:</strong> dias em que você comprou (o valor pago aparece ao passar o mouse)</span>
               <span>🔵 <strong>Linha Azul:</strong> cotação de mercado</span>
             </div>
 
