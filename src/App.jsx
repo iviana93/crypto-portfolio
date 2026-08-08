@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid, ReferenceLine, ReferenceDot } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
 
 const COLORS = ['#F7931A', '#627EEA', '#14F195', '#375BD2', '#E84142', '#F3BA2F', '#8C8C8C'];
 
@@ -221,6 +221,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
+  const [highlightedDate, setHighlightedDate] = useState(null);
 
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
   const vsCurrency = currency.toLowerCase();
@@ -280,17 +281,26 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
     fetchChart();
   }, [asset, vsCurrency]);
 
-  // Localiza, para cada compra, o ponto do gráfico de 30 dias com a mesma
-  // data (formato d/m), para plotar um marcador ali. Compras fora da janela
-  // de 30 dias simplesmente não aparecem no gráfico, mas continuam na lista abaixo.
-  const purchaseMarkers = (purchases || [])
-    .map((p) => {
+  // Em vez de tentar posicionar um <ReferenceDot> "por fora" combinando strings de
+  // data (o que ficava impreciso e cortava os pontos fora da área do gráfico),
+  // anexamos a compra diretamente na linha correspondente dos dados do gráfico.
+  // Assim o Recharts posiciona o marcador usando exatamente o mesmo eixo X da
+  // linha de preço, sem risco de desalinhamento.
+  const chartDataWithMarkers = chartData.map((point) => {
+    const matches = purchases.filter((p) => {
       const d = new Date(`${p.date}T00:00:00`);
       const label = `${d.getDate()}/${d.getMonth() + 1}`;
-      const point = chartData.find((c) => c.date === label);
-      return point ? { ...p, chartDate: point.date } : null;
-    })
-    .filter(Boolean);
+      return label === point.date;
+    });
+    if (matches.length === 0) return point;
+
+    const totalQty = matches.reduce((s, m) => s + m.amount, 0);
+    const weightedPrice = totalQty > 0
+      ? matches.reduce((s, m) => s + m.unitPrice * m.amount, 0) / totalQty
+      : matches[0].unitPrice;
+
+    return { ...point, buyMarker: weightedPrice, buyCount: matches.length };
+  });
 
   if (!asset) return null;
 
@@ -316,7 +326,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
           <div>
             <div style={{ width: '100%', height: '260px' }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                <AreaChart data={chartDataWithMarkers} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                   <defs>
                     <linearGradient id="assetPriceGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
@@ -327,7 +337,11 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
                   <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={11} interval="preserveStartEnd" />
                   <YAxis stroke="var(--text-muted)" fontSize={11} domain={['auto', 'auto']} tickFormatter={(v) => `${currencySymbol}${v}`} />
                   <Tooltip
-                    formatter={(val) => `${currencySymbol} ${val.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US')}`}
+                    formatter={(val, name) => {
+                      const formattedVal = `${currencySymbol} ${Number(val).toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+                      if (name === 'buyMarker') return [formattedVal, '🟠 Sua compra'];
+                      return [formattedVal, '🔵 Cotação de mercado'];
+                    }}
                     labelFormatter={(label, payload) => payload[0]?.payload?.fullDate ? `Data: ${payload[0].payload.fullDate}` : label}
                     contentStyle={{ background: 'var(--bg)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px' }}
                   />
@@ -339,19 +353,28 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
                       label={{ value: `Preço Médio de Compra: ${currencySymbol} ${buyUnitPrice.toFixed(2)}`, fill: '#10b981', fontSize: 10, position: 'insideTopLeft' }}
                     />
                   )}
-                  {purchaseMarkers.map((p, idx) => (
-                    <ReferenceDot
-                      key={idx}
-                      x={p.chartDate}
-                      y={p.unitPrice}
-                      r={5}
-                      fill="#f59e0b"
-                      stroke="#fff"
-                      strokeWidth={1.5}
-                      ifOverflow="extendDomain"
-                    />
-                  ))}
-                  <Area type="monotone" dataKey="price" stroke="#3b82f6" fillOpacity={1} fill="url(#assetPriceGrad)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="price" name="price" stroke="#3b82f6" fillOpacity={1} fill="url(#assetPriceGrad)" strokeWidth={2} />
+                  <Line
+                    type="monotone"
+                    dataKey="buyMarker"
+                    name="buyMarker"
+                    stroke="none"
+                    isAnimationActive={false}
+                    connectNulls={false}
+                    legendType="none"
+                    dot={(dotProps) => {
+                      const { cx, cy, payload, index } = dotProps;
+                      if (payload?.buyMarker === undefined || payload?.buyMarker === null) return null;
+                      const isHighlighted = highlightedDate === payload.date;
+                      const r = isHighlighted ? 9 : 6;
+                      return (
+                        <g key={`buy-dot-${index}`}>
+                          {isHighlighted && <circle cx={cx} cy={cy} r={r + 5} fill="#f59e0b" fillOpacity={0.25} />}
+                          <circle cx={cx} cy={cy} r={r} fill="#f59e0b" stroke="#fff" strokeWidth={2} />
+                        </g>
+                      );
+                    }}
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -368,19 +391,49 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
                   🛒 Suas compras de {asset.coin_name} ({purchases.length})
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto' }}>
-                  {purchases.map((p, idx) => (
-                    <div
-                      key={idx}
-                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 10px', fontSize: '11px', color: 'var(--text-secondary)' }}
-                    >
-                      <span style={{ whiteSpace: 'nowrap' }}>📅 {p.date.split('-').reverse().join('/')}</span>
-                      <span style={{ whiteSpace: 'nowrap' }}>{p.amount} {asset.coin_symbol.toUpperCase()}</span>
-                      <span style={{ fontWeight: '700', color: 'var(--text)', whiteSpace: 'nowrap' }}>
-                        {currencySymbol} {p.unitPrice.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                      </span>
-                    </div>
-                  ))}
+                  {purchases.map((p, idx) => {
+                    const d = new Date(`${p.date}T00:00:00`);
+                    const label = `${d.getDate()}/${d.getMonth() + 1}`;
+                    const isInChart = chartData.some((c) => c.date === label);
+                    return (
+                      <div
+                        key={idx}
+                        onMouseEnter={() => isInChart && setHighlightedDate(label)}
+                        onMouseLeave={() => setHighlightedDate(null)}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: '10px',
+                          background: highlightedDate === label ? 'rgba(245, 158, 11, 0.12)' : 'var(--bg)',
+                          border: highlightedDate === label ? '1px solid #f59e0b' : '1px solid var(--border)',
+                          borderRadius: '8px',
+                          padding: '8px 10px',
+                          fontSize: '11px',
+                          color: 'var(--text-secondary)',
+                          cursor: isInChart ? 'pointer' : 'default',
+                        }}
+                      >
+                        <span style={{ whiteSpace: 'nowrap' }}>
+                          {isInChart ? '🟠' : '📅'} {p.date.split('-').reverse().join('/')}
+                        </span>
+                        <span style={{ whiteSpace: 'nowrap' }}>{p.amount} {asset.coin_symbol.toUpperCase()}</span>
+                        <span style={{ fontWeight: '700', color: 'var(--text)', whiteSpace: 'nowrap' }}>
+                          {currencySymbol} {p.unitPrice.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
+                {purchases.some((p) => {
+                  const d = new Date(`${p.date}T00:00:00`);
+                  const label = `${d.getDate()}/${d.getMonth() + 1}`;
+                  return !chartData.some((c) => c.date === label);
+                }) && (
+                  <p style={{ margin: '8px 0 0 0', fontSize: '10px', color: 'var(--text-faint)' }}>
+                    📅 Compras fora dos últimos 30 dias não aparecem marcadas no gráfico, só na lista acima.
+                  </p>
+                )}
               </div>
             )}
           </div>
