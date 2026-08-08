@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid, ReferenceLine, ReferenceDot } from 'recharts';
 
 const COLORS = ['#F7931A', '#627EEA', '#14F195', '#375BD2', '#E84142', '#F3BA2F', '#8C8C8C'];
 
@@ -217,7 +217,7 @@ function MainDashboard({ session, theme, setTheme }) {
 }
 
 // --- MODAL: GRÁFICO HISTÓRICO INDIVIDUAL (30 DIAS) ---
-function AssetChartModal({ asset, currency, buyUnitPrice, onClose }) {
+function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClose }) {
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -280,6 +280,18 @@ function AssetChartModal({ asset, currency, buyUnitPrice, onClose }) {
     fetchChart();
   }, [asset, vsCurrency]);
 
+  // Localiza, para cada compra, o ponto do gráfico de 30 dias com a mesma
+  // data (formato d/m), para plotar um marcador ali. Compras fora da janela
+  // de 30 dias simplesmente não aparecem no gráfico, mas continuam na lista abaixo.
+  const purchaseMarkers = (purchases || [])
+    .map((p) => {
+      const d = new Date(`${p.date}T00:00:00`);
+      const label = `${d.getDate()}/${d.getMonth() + 1}`;
+      const point = chartData.find((c) => c.date === label);
+      return point ? { ...p, chartDate: point.date } : null;
+    })
+    .filter(Boolean);
+
   if (!asset) return null;
 
   return (
@@ -324,18 +336,53 @@ function AssetChartModal({ asset, currency, buyUnitPrice, onClose }) {
                       y={buyUnitPrice}
                       stroke="#10b981"
                       strokeDasharray="4 4"
-                      label={{ value: `Preço de Compra: ${currencySymbol} ${buyUnitPrice.toFixed(2)}`, fill: '#10b981', fontSize: 10, position: 'insideTopLeft' }}
+                      label={{ value: `Preço Médio de Compra: ${currencySymbol} ${buyUnitPrice.toFixed(2)}`, fill: '#10b981', fontSize: 10, position: 'insideTopLeft' }}
                     />
                   )}
+                  {purchaseMarkers.map((p, idx) => (
+                    <ReferenceDot
+                      key={idx}
+                      x={p.chartDate}
+                      y={p.unitPrice}
+                      r={5}
+                      fill="#f59e0b"
+                      stroke="#fff"
+                      strokeWidth={1.5}
+                      ifOverflow="extendDomain"
+                    />
+                  ))}
                   <Area type="monotone" dataKey="price" stroke="#3b82f6" fillOpacity={1} fill="url(#assetPriceGrad)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
 
-            <div style={{ marginTop: '12px', padding: '10px 14px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
-              <span>🟢 <strong>Linha Pontilhada Verde:</strong> Seu preço médio de compra ({currencySymbol} {buyUnitPrice.toFixed(2)})</span>
-              <span>🔵 <strong>Linha Azul:</strong> Cotação de mercado</span>
+            <div style={{ marginTop: '12px', padding: '10px 14px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
+              <span>🟢 <strong>Linha Verde:</strong> preço médio de compra ({currencySymbol} {buyUnitPrice.toFixed(2)})</span>
+              <span>🟠 <strong>Pontos Laranja:</strong> suas compras (últimos 30 dias)</span>
+              <span>🔵 <strong>Linha Azul:</strong> cotação de mercado</span>
             </div>
+
+            {purchases.length > 0 && (
+              <div style={{ marginTop: '14px' }}>
+                <p style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: '700', color: 'var(--text)' }}>
+                  🛒 Suas compras de {asset.coin_name} ({purchases.length})
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto' }}>
+                  {purchases.map((p, idx) => (
+                    <div
+                      key={idx}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 10px', fontSize: '11px', color: 'var(--text-secondary)' }}
+                    >
+                      <span style={{ whiteSpace: 'nowrap' }}>📅 {p.date.split('-').reverse().join('/')}</span>
+                      <span style={{ whiteSpace: 'nowrap' }}>{p.amount} {asset.coin_symbol.toUpperCase()}</span>
+                      <span style={{ fontWeight: '700', color: 'var(--text)', whiteSpace: 'nowrap' }}>
+                        {currencySymbol} {p.unitPrice.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1483,6 +1530,14 @@ function PortfolioTab({ session, currency }) {
           asset={selectedChartAsset}
           currency={currency}
           buyUnitPrice={selectedChartAsset.amount > 0 ? getItemTotalPaid(selectedChartAsset, currency) / selectedChartAsset.amount : 0}
+          purchases={(selectedChartAsset.history || [])
+            .filter((tx) => tx.type === 'buy')
+            .map((tx) => ({
+              date: tx.date,
+              amount: tx.amount,
+              unitPrice: tx.amount > 0 ? convertCurrency(tx.total, tx.currency, currency) / tx.amount : 0,
+            }))
+            .sort((a, b) => new Date(a.date) - new Date(b.date))}
           onClose={() => setSelectedChartAsset(null)}
         />
       )}
@@ -1568,7 +1623,6 @@ function PortfolioTab({ session, currency }) {
                   const itemPnl = totalCurrentValue - totalPaid;
                   const itemPnlPct = totalPaid > 0 ? (itemPnl / totalPaid) * 100 : 0;
 
-                  const buyCount = (item.history || []).filter((tx) => tx.type === 'buy').length;
                   const purchaseDate = item.history && item.history[0]?.date
                     ? item.history[0].date.split('-').reverse().join('/')
                     : 'N/A';
@@ -1605,11 +1659,6 @@ function PortfolioTab({ session, currency }) {
 
                       <td style={{ padding: '10px 8px', color: 'var(--text-muted)', fontSize: '11px' }}>
                         📅 {purchaseDate}
-                        {buyCount > 1 && (
-                          <span style={{ marginLeft: '6px', background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: '10px', padding: '1px 6px', fontSize: '10px' }}>
-                            {buyCount}x compras
-                          </span>
-                        )}
                       </td>
 
                       <td style={{ padding: '10px 8px', fontWeight: '500' }}>
