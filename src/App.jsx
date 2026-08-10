@@ -229,7 +229,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
   useEffect(() => {
     if (!asset) return;
 
-    const cacheKey = `chart_30d_${asset.coin_id}_${vsCurrency}`;
+    const cacheKey = `chart_30d_v2_${asset.coin_id}_${vsCurrency}`;
     const cached = localStorage.getItem(cacheKey);
     const now = Date.now();
 
@@ -259,7 +259,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
         if (!res.ok) throw new Error('Falha ao carregar gráfico histórico.');
 
         const json = await res.json();
-        const formatted = (json.prices || []).map(([timestamp, price]) => {
+        const hourly = (json.prices || []).map(([timestamp, price]) => {
           const dateObj = new Date(timestamp);
           return {
             timestamp,
@@ -268,6 +268,17 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
             price: parseFloat(price.toFixed(price < 1 ? 6 : 2)),
           };
         });
+
+        // A CoinGecko devolve granularidade HORÁRIA numa janela de 30 dias (várias
+        // dezenas de pontos por dia). Sem agregar, cada compra era comparada contra
+        // TODOS os pontos daquele dia e acabava marcada com uma bolinha em cada hora
+        // — daí o excesso de pontos no gráfico. Aqui reduzimos para um ponto por dia
+        // (o preço de fechamento, ou seja, a última cotação registrada naquele dia).
+        const byDay = new Map();
+        hourly.forEach((point) => {
+          byDay.set(point.date, point);
+        });
+        const formatted = Array.from(byDay.values()).sort((a, b) => a.timestamp - b.timestamp);
 
         localStorage.setItem(cacheKey, JSON.stringify({ data: formatted, ts: Date.now() }));
         setChartData(formatted);
@@ -394,7 +405,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
             </div>
 
             <div style={{ marginTop: '12px', padding: '10px 14px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
-              <span>🟢 <strong>Linha Verde:</strong> preço médio de compra ({currencySymbol} {buyUnitPrice.toFixed(2)})</span>
+              <span>🟢 <strong>Linha Verde:</strong> referência do preço médio pago ({currencySymbol} {buyUnitPrice.toFixed(2)}) — não marca datas</span>
               <span>🟠 <strong>Pontos Laranja:</strong> dias em que você comprou (o valor pago aparece ao passar o mouse)</span>
               <span>🔵 <strong>Linha Azul:</strong> cotação de mercado</span>
             </div>
