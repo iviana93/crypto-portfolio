@@ -338,7 +338,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
   return (
     <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px', width: '100%', maxWidth: '620px', boxSizing: 'border-box' }}>
-        
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '17px', color: 'var(--text)' }}>
@@ -455,10 +455,10 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
                   const label = `${d.getDate()}/${d.getMonth() + 1}`;
                   return !chartData.some((c) => c.date === label);
                 }) && (
-                  <p style={{ margin: '8px 0 0 0', fontSize: '10px', color: 'var(--text-faint)' }}>
-                    📅 Compras fora dos últimos 30 dias não aparecem marcadas no gráfico, só na lista acima.
-                  </p>
-                )}
+                    <p style={{ margin: '8px 0 0 0', fontSize: '10px', color: 'var(--text-faint)' }}>
+                      📅 Compras fora dos últimos 30 dias não aparecem marcadas no gráfico, só na lista acima.
+                    </p>
+                  )}
               </div>
             )}
           </div>
@@ -1259,26 +1259,26 @@ function PortfolioTab({ session, currency }) {
               Ainda estamos coletando o histórico diário. Volte amanhã pra ver a evolução real.
             </p>
           ) : (
-          <div style={{ width: '100%', height: '180px' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={timeSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="pnlColor" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.4} />
-                    <stop offset="95%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={11} />
-                <YAxis stroke="var(--text-muted)" fontSize={11} domain={['auto', 'auto']} />
-                <Tooltip
-                  formatter={(val) => `${currencySymbol} ${val}`}
-                  contentStyle={{ background: 'var(--bg)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px' }}
-                />
-                <Area type="monotone" dataKey="pnl" stroke={totalPnl >= 0 ? '#10b981' : '#ef4444'} fillOpacity={1} fill="url(#pnlColor)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+            <div style={{ width: '100%', height: '180px' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={timeSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="pnlColor" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0.4} />
+                      <stop offset="95%" stopColor={totalPnl >= 0 ? '#10b981' : '#ef4444'} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={11} />
+                  <YAxis stroke="var(--text-muted)" fontSize={11} domain={['auto', 'auto']} />
+                  <Tooltip
+                    formatter={(val) => `${currencySymbol} ${val}`}
+                    contentStyle={{ background: 'var(--bg)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px' }}
+                  />
+                  <Area type="monotone" dataKey="pnl" stroke={totalPnl >= 0 ? '#10b981' : '#ef4444'} fillOpacity={1} fill="url(#pnlColor)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </div>
 
@@ -1496,69 +1496,60 @@ function PortfolioTab({ session, currency }) {
             {showFeeCalc && (
               <div style={{ marginTop: '10px', padding: '12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px' }}>
                 <p style={{ margin: '0 0 10px 0', fontSize: '11px', color: 'var(--text-muted)' }}>
-                  Corretoras como a Coinbase cobram uma taxa embutida na compra: você paga um total, mas recebe menos cripto do que o preço de mercado "puro" indicaria.
-                  Informe a taxa cobrada e calculamos a quantidade líquida que você realmente recebeu, pra registrar o preço efetivo real.
+                  Informe o preço de mercado e a taxa cobrada em Reais (R$) no comprovante da Coinbase.
                 </p>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '10px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      Preço de mercado agora ({currency})
+                      Preço Mercado ({currency})
                     </label>
                     <input
                       type="number"
                       step="any"
                       value={liveMarketPrice ?? ''}
                       onChange={(e) => setLiveMarketPrice(e.target.value ? parseFloat(e.target.value) : null)}
-                      placeholder={fetchingLivePrice ? 'Buscando...' : 'Preço de mercado'}
+                      placeholder="Preço sem taxa"
                       style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: '12px', boxSizing: 'border-box' }}
                     />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      Taxa da corretora (%)
+                      Taxa cobrada em {currency}
                     </label>
                     <input
                       type="number"
                       step="any"
                       value={feePercent}
                       onChange={(e) => setFeePercent(e.target.value)}
-                      placeholder="Ex: 1.49"
+                      placeholder="Ex: 2.05"
                       style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: '12px', boxSizing: 'border-box' }}
                     />
                   </div>
                 </div>
 
-                <p style={{ margin: '0 0 10px 0', fontSize: '10px', color: 'var(--text-faint)' }}>
-                  A Coinbase costuma cobrar entre ~1,49% (saldo/conta bancária) e ~3,99% (cartão), variando por país e método de pagamento — confira o valor exato mostrado na confirmação da sua compra.
-                </p>
-
                 {(() => {
                   const total = parseFloat(totalSpent);
-                  const fee = parseFloat(feePercent);
+                  const feeInCurrency = parseFloat(feePercent);
                   const price = liveMarketPrice;
-                  const valid = total > 0 && price > 0 && !isNaN(fee) && fee >= 0 && fee < 100;
-                  if (!valid) {
-                    return (
-                      <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-muted)' }}>
-                        Preencha "Total Pago" no formulário acima e o preço de mercado + taxa aqui para calcular.
-                      </p>
-                    );
-                  }
-                  const netAmount = (total * (1 - fee / 100)) / price;
+                  if (!total || !price || isNaN(feeInCurrency)) return null;
+
+                  const netFiatSpent = Math.max(0, total - feeInCurrency);
+                  const netAmount = netFiatSpent / price;
                   const effectivePrice = total / netAmount;
+
                   return (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                        <div>Quantidade líquida estimada: <strong style={{ color: 'var(--text)' }}>{netAmount.toFixed(8)} {selectedCoin.symbol.toUpperCase()}</strong></div>
-                        <div>Preço efetivo pago: <strong style={{ color: '#f59e0b' }}>{currencySymbol} {effectivePrice.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (vs {currencySymbol} {price.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US')} de mercado)</div>
+                        <div>Qtd líquida estimada: <strong style={{ color: 'var(--text)' }}>{netAmount.toFixed(8)} {selectedCoin.symbol.toUpperCase()}</strong></div>
+                        <div>Preço efetivo pago: <strong style={{ color: '#f59e0b' }}>{currencySymbol} {effectivePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
                       </div>
                       <button
                         type="button"
                         onClick={() => setAmount(netAmount.toFixed(8))}
-                        style={{ padding: '8px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        style={{ padding: '8px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
                       >
-                        Preencher "Qtd Comprada"
+                        Preencher Qtd Comprada
                       </button>
                     </div>
                   );
@@ -1972,8 +1963,8 @@ function MarketTab({ session, currency }) {
     }
   };
 
-  const filteredCoins = marketCoins.filter(c => 
-    c.name.toLowerCase().includes(filterQuery.toLowerCase()) || 
+  const filteredCoins = marketCoins.filter(c =>
+    c.name.toLowerCase().includes(filterQuery.toLowerCase()) ||
     c.symbol.toLowerCase().includes(filterQuery.toLowerCase())
   );
 
@@ -1985,25 +1976,25 @@ function MarketTab({ session, currency }) {
     return a.market_cap_rank - b.market_cap_rank;
   });
 
-  const topGainer = marketCoins.length > 0 
-    ? [...marketCoins].sort((a,b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0))[0]
+  const topGainer = marketCoins.length > 0
+    ? [...marketCoins].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0))[0]
     : null;
 
-  const topLoser = marketCoins.length > 0 
-    ? [...marketCoins].sort((a,b) => (a.price_change_percentage_24h || 0) - (b.price_change_percentage_24h || 0))[0]
+  const topLoser = marketCoins.length > 0
+    ? [...marketCoins].sort((a, b) => (a.price_change_percentage_24h || 0) - (b.price_change_percentage_24h || 0))[0]
     : null;
 
   const topVolume = marketCoins.length > 0
-    ? [...marketCoins].sort((a,b) => (b.total_volume || 0) - (a.total_volume || 0))[0]
+    ? [...marketCoins].sort((a, b) => (b.total_volume || 0) - (a.total_volume || 0))[0]
     : null;
 
   const topGainer30d = marketCoins.length > 0
-    ? [...marketCoins].sort((a,b) => (b.price_change_percentage_30d_in_currency || 0) - (a.price_change_percentage_30d_in_currency || 0))[0]
+    ? [...marketCoins].sort((a, b) => (b.price_change_percentage_30d_in_currency || 0) - (a.price_change_percentage_30d_in_currency || 0))[0]
     : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%', boxSizing: 'border-box' }}>
-      
+
       {/* Cards de Destaques do Mercado */}
       {!loading && marketCoins.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
@@ -2100,7 +2091,7 @@ function MarketTab({ session, currency }) {
                 {sortedCoins.map((coin) => {
                   const isFav = favorites.includes(coin.id);
                   const change30d = coin.price_change_percentage_30d_in_currency;
-                  
+
                   const price1MonthAgo = (change30d !== null && change30d !== undefined)
                     ? coin.current_price / (1 + change30d / 100)
                     : null;
