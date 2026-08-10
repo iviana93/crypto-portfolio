@@ -412,14 +412,26 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
 
             {purchases.length > 0 && (
               <div style={{ marginTop: '14px' }}>
-                <p style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: '700', color: 'var(--text)' }}>
-                  🛒 Suas compras de {asset.coin_name} ({purchases.length})
-                </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <p style={{ margin: 0, fontSize: '12px', fontWeight: '700', color: 'var(--text)' }}>
+                    🛒 Suas compras de {asset.coin_name} ({purchases.length})
+                  </p>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                    Total Investido: <strong style={{ color: '#10b981' }}>
+                      {currencySymbol} {purchases.reduce((acc, p) => acc + (p.totalPaid || p.totalSpent || (p.amount * p.unitPrice)), 0).toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </strong>
+                  </span>
+                </div>
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto' }}>
                   {purchases.map((p, idx) => {
                     const d = new Date(`${p.date}T00:00:00`);
                     const label = `${d.getDate()}/${d.getMonth() + 1}`;
                     const isInChart = chartData.some((c) => c.date === label);
+
+                    // Calcula o gasto total da transação
+                    const totalSpent = p.totalPaid || p.totalSpent || (p.amount * p.unitPrice);
+
                     return (
                       <div
                         key={idx}
@@ -427,7 +439,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
                         onMouseLeave={() => setHighlightedDate(null)}
                         style={{
                           display: 'flex',
-                          justifyContent: 'space-between',
+                          justify: 'space-between',
                           alignItems: 'center',
                           gap: '10px',
                           background: highlightedDate === label ? 'rgba(245, 158, 11, 0.12)' : 'var(--bg)',
@@ -442,14 +454,25 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
                         <span style={{ whiteSpace: 'nowrap' }}>
                           {isInChart ? '🟠' : '📅'} {p.date.split('-').reverse().join('/')}
                         </span>
-                        <span style={{ whiteSpace: 'nowrap' }}>{p.amount} {asset.coin_symbol.toUpperCase()}</span>
-                        <span style={{ fontWeight: '700', color: 'var(--text)', whiteSpace: 'nowrap' }}>
-                          {currencySymbol} {p.unitPrice.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+
+                        <span style={{ whiteSpace: 'nowrap' }}>
+                          {p.amount} {asset.coin_symbol.toUpperCase()}
                         </span>
+
+                        {/* Total Gasto em destaque + Cotação em subtexto */}
+                        <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontWeight: '700', color: 'var(--text)', fontSize: '12px' }}>
+                            {currencySymbol} {totalSpent.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                          <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
+                            Cotação: {currencySymbol} {p.unitPrice.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
+
                 {purchases.some((p) => {
                   const d = new Date(`${p.date}T00:00:00`);
                   const label = `${d.getDate()}/${d.getMonth() + 1}`;
