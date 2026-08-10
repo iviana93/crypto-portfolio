@@ -486,6 +486,15 @@ function PortfolioTab({ session, currency }) {
   const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
   const [walletLabel, setWalletLabel] = useState('');
 
+  // Calculadora de taxa da corretora (ex: Coinbase cobra um spread/taxa embutido
+  // na compra, então a quantidade de cripto que você recebe é menor do que
+  // "total pago / preço de mercado". Isso ajuda a calcular a quantidade líquida
+  // recebida a partir do valor pago + taxa, pra registrar o preço efetivo real.
+  const [showFeeCalc, setShowFeeCalc] = useState(false);
+  const [feePercent, setFeePercent] = useState('1.49');
+  const [liveMarketPrice, setLiveMarketPrice] = useState(null);
+  const [fetchingLivePrice, setFetchingLivePrice] = useState(false);
+
   const [walletFilter, setWalletFilter] = useState('todas');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
@@ -510,6 +519,31 @@ function PortfolioTab({ session, currency }) {
   useEffect(() => {
     loadPortfolio();
   }, []);
+
+  useEffect(() => {
+    if (!selectedCoin) {
+      setLiveMarketPrice(null);
+      return;
+    }
+    let cancelled = false;
+    const fetchLivePrice = async () => {
+      setFetchingLivePrice(true);
+      try {
+        const res = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${selectedCoin.id}&vs_currencies=${currency.toLowerCase()}`
+        );
+        const data = await res.json();
+        const p = data?.[selectedCoin.id]?.[currency.toLowerCase()];
+        if (!cancelled && p) setLiveMarketPrice(p);
+      } catch (err) {
+        console.warn('Não foi possível buscar o preço de mercado ao vivo:', err.message);
+      } finally {
+        if (!cancelled) setFetchingLivePrice(false);
+      }
+    };
+    fetchLivePrice();
+    return () => { cancelled = true; };
+  }, [selectedCoin, currency]);
 
   useEffect(() => {
     const fetchOfficialRate = async () => {
@@ -1448,6 +1482,91 @@ function PortfolioTab({ session, currency }) {
             {saving ? 'Salvando...' : 'Salvar Operação'}
           </button>
         </form>
+
+        {txType === 'buy' && selectedCoin && (
+          <div style={{ marginTop: '12px' }}>
+            <button
+              type="button"
+              onClick={() => setShowFeeCalc((v) => !v)}
+              style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '12px', cursor: 'pointer', padding: 0, fontWeight: '600' }}
+            >
+              🧮 {showFeeCalc ? 'Ocultar' : 'Comprei com taxa da corretora (ex: Coinbase)? Calcular quantidade líquida'}
+            </button>
+
+            {showFeeCalc && (
+              <div style={{ marginTop: '10px', padding: '12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                <p style={{ margin: '0 0 10px 0', fontSize: '11px', color: 'var(--text-muted)' }}>
+                  Corretoras como a Coinbase cobram uma taxa embutida na compra: você paga um total, mas recebe menos cripto do que o preço de mercado "puro" indicaria.
+                  Informe a taxa cobrada e calculamos a quantidade líquida que você realmente recebeu, pra registrar o preço efetivo real.
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Preço de mercado agora ({currency})
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={liveMarketPrice ?? ''}
+                      onChange={(e) => setLiveMarketPrice(e.target.value ? parseFloat(e.target.value) : null)}
+                      placeholder={fetchingLivePrice ? 'Buscando...' : 'Preço de mercado'}
+                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: '12px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Taxa da corretora (%)
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={feePercent}
+                      onChange={(e) => setFeePercent(e.target.value)}
+                      placeholder="Ex: 1.49"
+                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: '12px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+
+                <p style={{ margin: '0 0 10px 0', fontSize: '10px', color: 'var(--text-faint)' }}>
+                  A Coinbase costuma cobrar entre ~1,49% (saldo/conta bancária) e ~3,99% (cartão), variando por país e método de pagamento — confira o valor exato mostrado na confirmação da sua compra.
+                </p>
+
+                {(() => {
+                  const total = parseFloat(totalSpent);
+                  const fee = parseFloat(feePercent);
+                  const price = liveMarketPrice;
+                  const valid = total > 0 && price > 0 && !isNaN(fee) && fee >= 0 && fee < 100;
+                  if (!valid) {
+                    return (
+                      <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-muted)' }}>
+                        Preencha "Total Pago" no formulário acima e o preço de mercado + taxa aqui para calcular.
+                      </p>
+                    );
+                  }
+                  const netAmount = (total * (1 - fee / 100)) / price;
+                  const effectivePrice = total / netAmount;
+                  return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        <div>Quantidade líquida estimada: <strong style={{ color: 'var(--text)' }}>{netAmount.toFixed(8)} {selectedCoin.symbol.toUpperCase()}</strong></div>
+                        <div>Preço efetivo pago: <strong style={{ color: '#f59e0b' }}>{currencySymbol} {effectivePrice.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (vs {currencySymbol} {price.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US')} de mercado)</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAmount(netAmount.toFixed(8))}
+                        style={{ padding: '8px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >
+                        Preencher "Qtd Comprada"
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Calendário */}
