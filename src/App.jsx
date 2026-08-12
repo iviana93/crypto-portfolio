@@ -1382,6 +1382,7 @@ function PortfolioTab({ session, currency }) {
         portfolio={portfolio}
         exchangeRate={exchangeRate}
       />
+      <br></br>
 
       {/* Realizado vs Não Realizado + Destaques */}
       {portfolio.length > 0 && (
