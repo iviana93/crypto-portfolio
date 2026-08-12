@@ -293,11 +293,7 @@ export const RiskMetricsCard = ({
                  * Caso não exista, transações em USD continuam sendo
                  * calculadas normalmente.
                  */
-                const txUSD = convertTransactionToUSD(
-                    tx.total,
-                    tx.currency,
-                    exchangeRate
-                );
+
 
                 const txUSD = convertTransactionToUSD(
                     tx.total,
