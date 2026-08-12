@@ -34,7 +34,6 @@ const calculateRiskStats = (returns, riskFreeRate = 0.04) => {
         return { sharpe: 0, volatility: 0 };
     }
 
-    // Volatilidade e Sharpe anualizados (base 365 dias para crypto)
     const annualizedVol = stdDev * Math.sqrt(365);
     const dailyRiskFree = Math.pow(1 + riskFreeRate, 1 / 365) - 1;
     const sharpe = ((mean - dailyRiskFree) / stdDev) * Math.sqrt(365);
@@ -149,7 +148,6 @@ export const RiskMetricsCard = ({
                 boxSizing: 'border-box',
             }}
         >
-            {/* Header com Tag de Amostra */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                 <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontWeight: '600' }}>
                     Análise de Risco
@@ -171,10 +169,18 @@ export const RiskMetricsCard = ({
                 )}
             </div>
 
-            {/* Grid com 3 Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px' }}>
                 {/* DRAWDOWN */}
-                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px' }}>
+                <div
+                    title="A maior queda histórica do patrimônio (do topo ao fundo). Indica o seu pior cenário de perda."
+                    style={{ 
+                        background: 'var(--bg)', 
+                        border: '1px solid var(--border)', 
+                        borderRadius: '10px', 
+                        padding: '10px',
+                        cursor: 'help' 
+                    }}
+                >
                     <p style={{ margin: '0 0 4px 0', color: 'var(--text-faint)', fontSize: '11px', fontWeight: '500' }}>
                         Drawdown Máx.
                     </p>
@@ -184,7 +190,16 @@ export const RiskMetricsCard = ({
                 </div>
 
                 {/* VOLATILIDADE */}
-                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px' }}>
+                <div
+                    title="Mede a intensidade das oscilações da carteira. Quanto maior, mais 'turbulento' e arriscado é o investimento."
+                    style={{ 
+                        background: 'var(--bg)', 
+                        border: '1px solid var(--border)', 
+                        borderRadius: '10px', 
+                        padding: '10px',
+                        cursor: 'help' 
+                    }}
+                >
                     <p style={{ margin: '0 0 4px 0', color: 'var(--text-faint)', fontSize: '11px', fontWeight: '500' }}>
                         Volatilidade a.a.
                     </p>
@@ -194,7 +209,16 @@ export const RiskMetricsCard = ({
                 </div>
 
                 {/* SHARPE */}
-                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px' }}>
+                <div
+                    title="Mede se o retorno compensa o risco. Valores acima de 1.0 indicam boa eficiência em relação à renda fixa."
+                    style={{ 
+                        background: 'var(--bg)', 
+                        border: '1px solid var(--border)', 
+                        borderRadius: '10px', 
+                        padding: '10px',
+                        cursor: 'help' 
+                    }}
+                >
                     <p style={{ margin: '0 0 4px 0', color: 'var(--text-faint)', fontSize: '11px', fontWeight: '500' }}>
                         Índice Sharpe
                     </p>
@@ -211,7 +235,6 @@ export const RiskMetricsCard = ({
                 </div>
             </div>
 
-            {/* Rodapé Informativo */}
             <p style={{ margin: '12px 0 0 0', color: 'var(--text-faint)', fontSize: '10px', lineHeight: '1.4' }}>
                 {isLowData
                     ? '*Métricas preliminares. O Índice Sharpe e a Volatilidade ganham precisão estatística a partir de 30 a 90 dias de histórico.'
