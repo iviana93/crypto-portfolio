@@ -1377,7 +1377,7 @@ function PortfolioTab({ session, currency }) {
         </div>
       </div>
 
-      <RiskMetricsCard portfolioHistory="{snapshotHistory}"/>
+      <RiskMetricsCard portfolioHistory={snapshotHistory}/>
 
       {/* Realizado vs Não Realizado + Destaques */}
       {portfolio.length > 0 && (
