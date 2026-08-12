@@ -38,11 +38,14 @@ export const DashboardView = ({ portfolioHistory = [], children }) => {
     localStorage.removeItem('dashboard_layout');
   };
 
+  // Ensure portfolioHistory passed to children is explicitly an array
+  const safeHistory = Array.isArray(portfolioHistory) ? portfolioHistory : [];
+
   return (
     <div className="min-h-screen bg-slate-950 p-6 text-white">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Portfolio Command Center</h1>
-        <button 
+        <button
           onClick={handleResetLayout}
           className="px-3 py-1.5 text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition"
         >
@@ -63,7 +66,7 @@ export const DashboardView = ({ portfolioHistory = [], children }) => {
           <div className="drag-handle bg-slate-800 p-1.5 text-xs text-center text-slate-400 cursor-move rounded-t-xl select-none font-medium">
             ⠿ Risk Metrics
           </div>
-          <RiskMetricsCard portfolioHistory={portfolioHistory} />
+          <RiskMetricsCard portfolioHistory={safeHistory} />
         </div>
 
         <div key="chart" className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden flex flex-col">
