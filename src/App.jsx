@@ -1262,7 +1262,7 @@ function PortfolioTab({ session, currency }) {
 
       {/* Resumo do Patrimônio: 3 CARDS (Patrimônio Atual, Total Investido, Lucro/Prejuízo) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
-        
+
         {/* Card 1: Patrimônio Atual */}
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
           <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Patrimônio Atual</span>
@@ -1377,7 +1377,11 @@ function PortfolioTab({ session, currency }) {
         </div>
       </div>
 
-      <RiskMetricsCard portfolioHistory={snapshotHistory}/>
+      <RiskMetricsCard
+        portfolioHistory={snapshotHistory}
+        portfolio={portfolio}
+        exchangeRate={exchangeRate}
+      />
 
       {/* Realizado vs Não Realizado + Destaques */}
       {portfolio.length > 0 && (
