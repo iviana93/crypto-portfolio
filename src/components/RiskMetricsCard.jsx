@@ -3,7 +3,6 @@ import { calculateMaxDrawdown, calculateSharpeRatio } from '../utils/riskMetrics
 
 export const RiskMetricsCard = ({ portfolioHistory = [] }) => {
   const { mdd, sharpe } = useMemo(() => {
-    // Array safety check to prevent e.map is not a function crashes
     const safeHistory = Array.isArray(portfolioHistory) ? portfolioHistory : [];
 
     if (safeHistory.length === 0) {
@@ -19,29 +18,113 @@ export const RiskMetricsCard = ({ portfolioHistory = [] }) => {
     };
   }, [portfolioHistory]);
 
-  const formattedMdd = typeof mdd === 'number' && !isNaN(mdd) ? (mdd * 100).toFixed(2) : '0.00';
-  const formattedSharpe = typeof sharpe === 'number' && !isNaN(sharpe) ? sharpe.toFixed(2) : '0.00';
+  const formattedMdd = typeof mdd === 'number' && !isNaN(mdd) && mdd > 0 
+    ? (mdd * 100).toFixed(2) 
+    : '0.00';
+
+  const formattedSharpe = typeof sharpe === 'number' && !isNaN(sharpe) 
+    ? sharpe.toFixed(2) 
+    : '0.00';
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 text-white h-full">
-      <h3 className="text-lg font-semibold mb-4 text-slate-200">Risk Analytics</h3>
+    <div
+      style={{
+        backgroundColor: '#0f172a',
+        border: '1px solid #1e293b',
+        borderRadius: '12px',
+        padding: '24px',
+        color: '#ffffff',
+        height: '100%',
+        boxSizing: 'border-box',
+        fontFamily: 'sans-serif',
+      }}
+    >
+      <h3
+        style={{
+          fontSize: '18px',
+          fontWeight: 600,
+          marginBottom: '16px',
+          color: '#e2e8f0',
+          marginTop: 0,
+        }}
+      >
+        Risk Analytics
+      </h3>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-slate-800 p-4 rounded-lg">
-          <p className="text-sm text-slate-400 mb-1">Max Drawdown</p>
-          <p className="text-2xl font-bold text-red-400">
-            -{formattedMdd}%
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: '16px',
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: '#1e293b',
+            padding: '16px',
+            borderRadius: '8px',
+          }}
+        >
+          <p
+            style={{
+              fontSize: '14px',
+              color: '#94a3b8',
+              marginBottom: '4px',
+              marginTop: 0,
+            }}
+          >
+            Max Drawdown
+          </p>
+          <p
+            style={{
+              fontSize: '24px',
+              fontWeight: 700,
+              color: '#f87171',
+              margin: 0,
+            }}
+          >
+            {mdd > 0 ? `-${formattedMdd}%` : `${formattedMdd}%`}
           </p>
         </div>
 
-        <div className="bg-slate-800 p-4 rounded-lg">
-          <p className="text-sm text-slate-400 mb-1">Sharpe Ratio</p>
-          <p className="text-2xl font-bold text-emerald-400">
+        <div
+          style={{
+            backgroundColor: '#1e293b',
+            padding: '16px',
+            borderRadius: '8px',
+          }}
+        >
+          <p
+            style={{
+              fontSize: '14px',
+              color: '#94a3b8',
+              marginBottom: '4px',
+              marginTop: 0,
+            }}
+          >
+            Sharpe Ratio
+          </p>
+          <p
+            style={{
+              fontSize: '24px',
+              fontWeight: 700,
+              color: '#34d399',
+              margin: 0,
+            }}
+          >
             {formattedSharpe}
           </p>
         </div>
       </div>
-      <p className="text-xs text-slate-500 mt-4">
+
+      <p
+        style={{
+          fontSize: '12px',
+          color: '#64748b',
+          marginTop: '16px',
+          marginBottom: 0,
+        }}
+      >
         *Sharpe Ratio is annualized assuming a 4% risk-free rate.
       </p>
     </div>

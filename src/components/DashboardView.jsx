@@ -5,7 +5,6 @@ import 'react-resizable/css/styles.css';
 
 import { RiskMetricsCard } from './RiskMetricsCard';
 
-// Default layout configuration for 12-column grid
 const defaultLayout = [
   { i: 'risk', x: 0, y: 0, w: 4, h: 2 },
   { i: 'chart', x: 4, y: 0, w: 8, h: 4 },
@@ -13,10 +12,9 @@ const defaultLayout = [
   { i: 'market', x: 0, y: 4, w: 12, h: 3 },
 ];
 
-export const DashboardView = ({ portfolioHistory = [], children }) => {
+export const DashboardView = ({ portfolioHistory = [] }) => {
   const [layout, setLayout] = useState(defaultLayout);
 
-  // Load saved layout from localStorage on mount
   useEffect(() => {
     const savedLayout = localStorage.getItem('dashboard_layout');
     if (savedLayout) {
@@ -38,16 +36,47 @@ export const DashboardView = ({ portfolioHistory = [], children }) => {
     localStorage.removeItem('dashboard_layout');
   };
 
-  // Ensure portfolioHistory passed to children is explicitly an array
   const safeHistory = Array.isArray(portfolioHistory) ? portfolioHistory : [];
 
+  const handleStyle = {
+    backgroundColor: '#1e293b',
+    padding: '6px',
+    fontSize: '12px',
+    textAlign: 'center',
+    color: '#94a3b8',
+    cursor: 'move',
+    userSelect: 'none',
+    fontWeight: 500,
+    borderTopLeftRadius: '12px',
+    borderTopRightRadius: '12px',
+  };
+
+  const cardStyle = {
+    backgroundColor: '#0f172a',
+    borderRadius: '12px',
+    border: '1px solid #1e293b',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    boxSizing: 'border-box',
+  };
+
   return (
-    <div className="min-h-screen bg-slate-950 p-6 text-white">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Portfolio Command Center</h1>
+    <div style={{ minHeight: '100vh', backgroundColor: '#020617', padding: '24px', color: '#ffffff', fontFamily: 'sans-serif' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <h1 style={{ fontSize: '24px', fontWeight: 700, margin: 0 }}>Portfolio Command Center</h1>
         <button
           onClick={handleResetLayout}
-          className="px-3 py-1.5 text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition"
+          style={{
+            padding: '6px 12px',
+            fontSize: '14px',
+            backgroundColor: '#1e293b',
+            color: '#cbd5e1',
+            borderRadius: '4px',
+            border: '1px solid #334155',
+            cursor: 'pointer',
+          }}
         >
           Reset Layout
         </button>
@@ -63,36 +92,36 @@ export const DashboardView = ({ portfolioHistory = [], children }) => {
         draggableHandle=".drag-handle"
       >
         <div key="risk">
-          <div className="drag-handle bg-slate-800 p-1.5 text-xs text-center text-slate-400 cursor-move rounded-t-xl select-none font-medium">
+          <div className="drag-handle" style={handleStyle}>
             ⠿ Risk Metrics
           </div>
           <RiskMetricsCard portfolioHistory={safeHistory} />
         </div>
 
-        <div key="chart" className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden flex flex-col">
-          <div className="drag-handle bg-slate-800 p-1.5 text-xs text-center text-slate-400 cursor-move select-none font-medium">
+        <div key="chart" style={cardStyle}>
+          <div className="drag-handle" style={handleStyle}>
             ⠿ Performance Chart
           </div>
-          <div className="p-4 flex-1">
-            <p className="text-sm text-slate-500">Your Portfolio Chart Component Here</p>
+          <div style={{ padding: '16px', flex: 1 }}>
+            <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>Your Portfolio Chart Component Here</p>
           </div>
         </div>
 
-        <div key="allocation" className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden flex flex-col">
-          <div className="drag-handle bg-slate-800 p-1.5 text-xs text-center text-slate-400 cursor-move select-none font-medium">
+        <div key="allocation" style={cardStyle}>
+          <div className="drag-handle" style={handleStyle}>
             ⠿ Allocation
           </div>
-          <div className="p-4 flex-1">
-            <p className="text-sm text-slate-500">Your Allocation Pie Chart Here</p>
+          <div style={{ padding: '16px', flex: 1 }}>
+            <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>Your Allocation Pie Chart Here</p>
           </div>
         </div>
 
-        <div key="market" className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden flex flex-col">
-          <div className="drag-handle bg-slate-800 p-1.5 text-xs text-center text-slate-400 cursor-move select-none font-medium">
+        <div key="market" style={cardStyle}>
+          <div className="drag-handle" style={handleStyle}>
             ⠿ Market Watchlist
           </div>
-          <div className="p-4 flex-1">
-            <p className="text-sm text-slate-500">Your Market Table Here</p>
+          <div style={{ padding: '16px', flex: 1 }}>
+            <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>Your Market Table Here</p>
           </div>
         </div>
       </GridLayout>
