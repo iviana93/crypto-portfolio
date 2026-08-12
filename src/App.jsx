@@ -269,11 +269,6 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
           };
         });
 
-        // A CoinGecko devolve granularidade HORÁRIA numa janela de 30 dias (várias
-        // dezenas de pontos por dia). Sem agregar, cada compra era comparada contra
-        // TODOS os pontos daquele dia e acabava marcada com uma bolinha em cada hora
-        // — daí o excesso de pontos no gráfico. Aqui reduzimos para um ponto por dia
-        // (o preço de fechamento, ou seja, a última cotação registrada naquele dia).
         const byDay = new Map();
         hourly.forEach((point) => {
           byDay.set(point.date, point);
@@ -292,10 +287,6 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
     fetchChart();
   }, [asset, vsCurrency]);
 
-  // O ponto laranja marca O DIA em que você comprou, sempre em cima da própria
-  // linha de mercado (para não sugerir que "o preço pago" é a cotação da moeda).
-  // O valor que você realmente pagou fica guardado à parte (buyPaidPrice) e só
-  // aparece rotulado como tal no tooltip e na lista abaixo do gráfico.
   const chartDataWithMarkers = chartData.map((point) => {
     const matches = purchases.filter((p) => {
       const d = new Date(`${p.date}T00:00:00`);
@@ -367,9 +358,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={11} interval="preserveStartEnd" />
                   <YAxis stroke="var(--text-muted)" fontSize={11} domain={['auto', 'auto']} tickFormatter={(v) => `${currencySymbol}${v}`} />
-                  <Tooltip
-                    content={<CustomTooltip />}
-                  />
+                  <Tooltip content={<CustomTooltip />} />
                   {buyUnitPrice > 0 && (
                     <ReferenceLine
                       y={buyUnitPrice}
@@ -428,8 +417,6 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
                     const d = new Date(`${p.date}T00:00:00`);
                     const label = `${d.getDate()}/${d.getMonth() + 1}`;
                     const isInChart = chartData.some((c) => c.date === label);
-
-                    // Calcula o gasto total da transação
                     const totalSpent = p.totalPaid || p.totalSpent || (p.amount * p.unitPrice);
 
                     return (
@@ -459,7 +446,6 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
                           {p.amount} {asset.coin_symbol.toUpperCase()}
                         </span>
 
-                        {/* Total Gasto em destaque + Cotação em subtexto */}
                         <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                           <div style={{ fontWeight: '700', color: 'var(--text)', fontSize: '12px' }}>
                             {currencySymbol} {totalSpent.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -499,6 +485,16 @@ function PortfolioTab({ session, currency }) {
   const [coinIcons, setCoinIcons] = useState({});
   const [coinCategories, setCoinCategories] = useState({});
 
+  // Estado do botão "Olhinho" (ocultar/mostrar valores) com persistência
+  const [showValues, setShowValues] = useState(() => {
+    const saved = localStorage.getItem('crypto_tracker_show_values');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('crypto_tracker_show_values', JSON.stringify(showValues));
+  }, [showValues]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedCoin, setSelectedCoin] = useState(null);
@@ -509,10 +505,6 @@ function PortfolioTab({ session, currency }) {
   const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
   const [walletLabel, setWalletLabel] = useState('');
 
-  // Calculadora de taxa da corretora (ex: Coinbase cobra um spread/taxa embutido
-  // na compra, então a quantidade de cripto que você recebe é menor do que
-  // "total pago / preço de mercado". Isso ajuda a calcular a quantidade líquida
-  // recebida a partir do valor pago + taxa, pra registrar o preço efetivo real.
   const [showFeeCalc, setShowFeeCalc] = useState(false);
   const [feePercent, setFeePercent] = useState('1.49');
   const [liveMarketPrice, setLiveMarketPrice] = useState(null);
@@ -878,7 +870,6 @@ function PortfolioTab({ session, currency }) {
       return;
     }
 
-    // Trava contra duplo clique / duplo submit enquanto uma operação já está sendo salva.
     if (saving) return;
     setSaving(true);
 
@@ -888,12 +879,6 @@ function PortfolioTab({ session, currency }) {
 
       if (txType === "sell") parsedAmount *= -1;
 
-      // IMPORTANTE: buscamos a posição direto no banco (em vez de usar o estado
-      // local `portfolio`, que pode estar desatualizado) antes de mesclar o
-      // histórico. Isso corrige o bug em que uma segunda compra da mesma moeda
-      // "sumia": se o estado local ainda não tivesse sido atualizado após a
-      // primeira compra, a segunda era salva como se fosse a primeira,
-      // sobrescrevendo o histórico anterior em vez de somar a ele.
       const { data: freshRow, error: fetchError } = await supabase
         .from("portfolio")
         .select("*")
@@ -1217,6 +1202,12 @@ function PortfolioTab({ session, currency }) {
     .sort((a, b) => new Date(b) - new Date(a));
   const isLoadingSummary = fetchingPrices && portfolio.length > 0;
 
+  // Função auxiliar para formatar valores ocultos ou visíveis
+  const formatMoney = (amount, digits = 2) => {
+    if (!showValues) return '••••••••';
+    return `${currencySymbol} ${amount.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+  };
+
   return (
     <>
       {/* Toast de confirmação */}
@@ -1241,34 +1232,80 @@ function PortfolioTab({ session, currency }) {
         </div>
       )}
 
-      {/* Resumo do Patrimônio */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
+      {/* Cabeçalho da Seção com o Botão do "Olhinho" */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <h3 style={{ margin: 0, fontSize: '15px', color: 'var(--text)', fontWeight: '700' }}>
+          📊 Resumo Financeiro
+        </h3>
+
+        <button
+          onClick={() => setShowValues(!showValues)}
+          title={showValues ? "Ocultar valores" : "Mostrar valores"}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '6px 12px',
+            borderRadius: '8px',
+            border: '1px solid var(--border)',
+            background: 'var(--card)',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: '600',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          {showValues ? '👁️ Ocultar valores' : '🙈 Mostrar valores'}
+        </button>
+      </div>
+
+      {/* Resumo do Patrimônio: 3 CARDS (Patrimônio Atual, Total Investido, Lucro/Prejuízo) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
+        
+        {/* Card 1: Patrimônio Atual */}
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
           <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Patrimônio Atual</span>
           <h2 style={{ margin: '4px 0 0 0', fontSize: '18px', color: 'var(--text)', fontWeight: '800' }}>
             {isLoadingSummary ? (
               <span style={{ fontSize: '13px', color: 'var(--text-faint)', fontWeight: '600' }}>Carregando...</span>
             ) : (
-              <>{currencySymbol} {currentValue.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+              formatMoney(currentValue)
             )}
           </h2>
         </div>
 
+        {/* Card 2: Total Investido */}
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Total Investido</span>
+          <h2 style={{ margin: '4px 0 0 0', fontSize: '18px', color: 'var(--text)', fontWeight: '800' }}>
+            {isLoadingSummary ? (
+              <span style={{ fontSize: '13px', color: 'var(--text-faint)', fontWeight: '600' }}>Carregando...</span>
+            ) : (
+              formatMoney(totalInvested)
+            )}
+          </h2>
+        </div>
+
+        {/* Card 3: Lucro / Prejuízo Total */}
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '14px', borderRadius: '14px', boxSizing: 'border-box' }}>
           <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Lucro / Prejuízo Total</span>
           <h2 style={{ margin: '4px 0 0 0', fontSize: '17px', color: totalPnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '800' }}>
             {isLoadingSummary ? (
               <span style={{ fontSize: '13px', color: 'var(--text-faint)', fontWeight: '600' }}>Carregando...</span>
-            ) : (
+            ) : showValues ? (
               <>
                 {currencySymbol} {totalPnl.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 <span style={{ fontSize: '11px', display: 'block', fontWeight: '600', marginTop: '2px' }}>
                   ({totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
                 </span>
               </>
+            ) : (
+              '••••••••'
             )}
           </h2>
         </div>
+
       </div>
 
       {/* Gráficos Consolidados */}
@@ -1293,9 +1330,9 @@ function PortfolioTab({ session, currency }) {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={11} />
-                  <YAxis stroke="var(--text-muted)" fontSize={11} domain={['auto', 'auto']} />
+                  <YAxis stroke="var(--text-muted)" fontSize={11} domain={['auto', 'auto']} tickFormatter={(v) => showValues ? v : '•••'} />
                   <Tooltip
-                    formatter={(val) => `${currencySymbol} ${val}`}
+                    formatter={(val) => showValues ? `${currencySymbol} ${val}` : '••••••••'}
                     contentStyle={{ background: 'var(--bg)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px' }}
                   />
                   <Area type="monotone" dataKey="pnl" stroke={totalPnl >= 0 ? '#10b981' : '#ef4444'} fillOpacity={1} fill="url(#pnlColor)" strokeWidth={2} />
@@ -1327,7 +1364,7 @@ function PortfolioTab({ session, currency }) {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value) => `${currencySymbol} ${value.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    formatter={(value) => showValues ? `${currencySymbol} ${value.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '••••••••'}
                     contentStyle={{ background: 'var(--bg)', borderColor: 'var(--border)', borderRadius: '8px', color: 'var(--text)', fontSize: '12px' }}
                   />
                   <Legend wrapperStyle={{ fontSize: '11px' }} />
@@ -1351,13 +1388,13 @@ function PortfolioTab({ session, currency }) {
               <div>
                 <span style={{ color: 'var(--text-faint)', fontSize: '11px', textTransform: 'uppercase', fontWeight: '600' }}>Realizado (vendas)</span>
                 <p style={{ margin: '4px 0 0 0', fontSize: '16px', fontWeight: '800', color: totalRealizedPnl >= 0 ? '#10b981' : '#ef4444' }}>
-                  {currencySymbol} {totalRealizedPnl.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatMoney(totalRealizedPnl)}
                 </p>
               </div>
               <div>
                 <span style={{ color: 'var(--text-faint)', fontSize: '11px', textTransform: 'uppercase', fontWeight: '600' }}>Não realizado (em aberto)</span>
                 <p style={{ margin: '4px 0 0 0', fontSize: '16px', fontWeight: '800', color: totalPnl >= 0 ? '#10b981' : '#ef4444' }}>
-                  {currencySymbol} {totalPnl.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatMoney(totalPnl)}
                 </p>
               </div>
             </div>
@@ -1635,7 +1672,7 @@ function PortfolioTab({ session, currency }) {
                   <span>
                     <span style={{ color: tx.type === 'buy' ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>
                       {tx.type === 'buy' ? 'COMPRA' : 'VENDA'}
-                    </span>: {Math.abs(tx.amount)} {tx.coin_symbol.toUpperCase()} por {tx.currency === 'BRL' ? 'R$' : '$'} {tx.total}
+                    </span>: {Math.abs(tx.amount)} {tx.coin_symbol.toUpperCase()} por {tx.currency === 'BRL' ? 'R$' : '$'} {showValues ? tx.total : '••••••••'}
                   </span>
                   <span style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                     <button
@@ -1885,18 +1922,24 @@ function PortfolioTab({ session, currency }) {
                       </td>
 
                       <td style={{ padding: '10px 8px', color: 'var(--text-secondary)' }}>
-                        {currencySymbol} {totalPaid.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {formatMoney(totalPaid)}
                       </td>
 
                       <td style={{ padding: '10px 8px', fontWeight: '600' }}>
-                        {currencySymbol} {totalCurrentValue.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {formatMoney(totalCurrentValue)}
                       </td>
 
                       <td style={{ padding: '10px 8px', fontWeight: '700', color: itemPnl >= 0 ? '#10b981' : '#ef4444' }}>
-                        {currencySymbol} {itemPnl.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <span style={{ fontSize: '10px', display: 'block', fontWeight: '600' }}>
-                          ({itemPnlPct >= 0 ? '+' : ''}{itemPnlPct.toFixed(2)}%)
-                        </span>
+                        {showValues ? (
+                          <>
+                            {currencySymbol} {itemPnl.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <span style={{ fontSize: '10px', display: 'block', fontWeight: '600' }}>
+                              ({itemPnlPct >= 0 ? '+' : ''}{itemPnlPct.toFixed(2)}%)
+                            </span>
+                          </>
+                        ) : (
+                          '••••••••'
+                        )}
                       </td>
 
                       <td style={{ padding: '10px 8px', textAlign: 'right' }}>
@@ -2075,104 +2118,69 @@ function MarketTab({ session, currency }) {
         </div>
       )}
 
+      {/* Tabela do Mercado */}
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', width: '100%', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
-          <div>
-            <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', color: 'var(--text)' }}>🌐 Principais Criptomoedas</h3>
-            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '12px' }}>
-              Acompanhe preços atuais, variações recentes e preço de 1 mês atrás.
-            </p>
-          </div>
-
+          <h3 style={{ margin: 0, fontSize: '15px', color: 'var(--text)' }}>🌐 Mercado Crypto (Top 30)</h3>
           <input
             type="text"
-            placeholder="🔍 Filtrar moeda..."
+            placeholder="Filtrar por nome/símbolo..."
             value={filterQuery}
             onChange={(e) => setFilterQuery(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12px', width: '180px' }}
+            style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12px', minWidth: '180px' }}
           />
         </div>
 
         {loading ? (
-          <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', padding: '20px 0' }}>Carregando mercado...</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Carregando dados do mercado...</p>
         ) : (
           <div style={{ width: '100%', overflowX: 'auto' }}>
-            <table style={{ width: '100%', minWidth: '720px', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>
-                  <th style={{ padding: '8px', width: '30px' }}>Fav</th>
+                  <th style={{ padding: '8px 4px', textAlign: 'center', width: '32px' }}>⭐</th>
+                  <th style={{ padding: '8px' }}>#</th>
                   <th style={{ padding: '8px' }}>Moeda</th>
-                  <th style={{ padding: '8px' }}>Preço Hoje</th>
+                  <th style={{ padding: '8px' }}>Preço</th>
                   <th style={{ padding: '8px' }}>24h %</th>
                   <th style={{ padding: '8px' }}>7d %</th>
-                  <th style={{ padding: '8px' }}>Há 1 Mês</th>
-                  <th style={{ padding: '8px' }}>30d %</th>
-                  <th style={{ padding: '8px', textAlign: 'right' }}>Cap. Mercado</th>
+                  <th style={{ padding: '8px' }}>Cap. de Mercado</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedCoins.map((coin) => {
                   const isFav = favorites.includes(coin.id);
-                  const change30d = coin.price_change_percentage_30d_in_currency;
-
-                  const price1MonthAgo = (change30d !== null && change30d !== undefined)
-                    ? coin.current_price / (1 + change30d / 100)
-                    : null;
+                  const p24 = coin.price_change_percentage_24h || 0;
+                  const p7d = coin.price_change_percentage_7d_in_currency || 0;
 
                   return (
-                    <tr
-                      key={coin.id}
-                      style={{
-                        borderBottom: '1px solid var(--border)',
-                        color: 'var(--text)',
-                        fontSize: '12px',
-                        background: isFav ? 'rgba(59, 130, 246, 0.05)' : 'transparent'
-                      }}
-                    >
-                      <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                    <tr key={coin.id} style={{ borderBottom: '1px solid var(--border)', color: 'var(--text)', fontSize: '12px' }}>
+                      <td style={{ padding: '10px 4px', textAlign: 'center' }}>
                         <button
                           onClick={() => toggleFavorite(coin.id)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: 0 }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}
                         >
                           {isFav ? '⭐' : '☆'}
                         </button>
                       </td>
-
+                      <td style={{ padding: '10px 8px', color: 'var(--text-muted)' }}>{coin.market_cap_rank}</td>
                       <td style={{ padding: '10px 8px', fontWeight: '600' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <img src={coin.image} alt={coin.name} width="18" height="18" />
                           <span>{coin.name}</span>
-                          <span style={{ color: 'var(--text-faint)', fontSize: '10px' }}>{coin.symbol.toUpperCase()}</span>
+                          <span style={{ color: 'var(--text-faint)', fontSize: '10px' }}>({coin.symbol.toUpperCase()})</span>
                         </div>
                       </td>
-
-                      <td style={{ padding: '10px 8px', fontWeight: '700', color: '#38bdf8' }}>
-                        {currencySymbol} {coin.current_price?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: coin.current_price < 1 ? 4 : 2 })}
+                      <td style={{ padding: '10px 8px', fontWeight: '700' }}>
+                        {currencySymbol} {coin.current_price?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                       </td>
-
-                      <td style={{ padding: '10px 8px', color: coin.price_change_percentage_24h >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>
-                        {coin.price_change_percentage_24h >= 0 ? '+' : ''}{coin.price_change_percentage_24h?.toFixed(2)}%
+                      <td style={{ padding: '10px 8px', fontWeight: '700', color: p24 >= 0 ? '#10b981' : '#ef4444' }}>
+                        {p24 >= 0 ? '+' : ''}{p24.toFixed(2)}%
                       </td>
-
-                      <td style={{ padding: '10px 8px', color: coin.price_change_percentage_7d_in_currency >= 0 ? '#10b981' : '#ef4444', fontWeight: '600' }}>
-                        {coin.price_change_percentage_7d_in_currency !== undefined && coin.price_change_percentage_7d_in_currency !== null ? (
-                          <>{coin.price_change_percentage_7d_in_currency >= 0 ? '+' : ''}{coin.price_change_percentage_7d_in_currency.toFixed(2)}%</>
-                        ) : '—'}
+                      <td style={{ padding: '10px 8px', fontWeight: '700', color: p7d >= 0 ? '#10b981' : '#ef4444' }}>
+                        {p7d >= 0 ? '+' : ''}{p7d.toFixed(2)}%
                       </td>
-
                       <td style={{ padding: '10px 8px', color: 'var(--text-secondary)' }}>
-                        {price1MonthAgo ? (
-                          <>{currencySymbol} {price1MonthAgo.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: price1MonthAgo < 1 ? 4 : 2 })}</>
-                        ) : '—'}
-                      </td>
-
-                      <td style={{ padding: '10px 8px', color: change30d >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>
-                        {change30d !== undefined && change30d !== null ? (
-                          <>{change30d >= 0 ? '+' : ''}{change30d.toFixed(2)}%</>
-                        ) : '—'}
-                      </td>
-
-                      <td style={{ padding: '10px 8px', textAlign: 'right', color: 'var(--text-muted)' }}>
                         {currencySymbol} {coin.market_cap?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US')}
                       </td>
                     </tr>
@@ -2183,6 +2191,7 @@ function MarketTab({ session, currency }) {
           </div>
         )}
       </div>
+
     </div>
   );
 }
