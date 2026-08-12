@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
-
+import { RiskMetricsCard } from './components/RiskMetricsCard';
 const COLORS = ['#F7931A', '#627EEA', '#14F195', '#375BD2', '#E84142', '#F3BA2F', '#8C8C8C'];
 
 const THEME_VARS = {
@@ -1376,6 +1376,8 @@ function PortfolioTab({ session, currency }) {
           )}
         </div>
       </div>
+
+      <RiskMetricsCard portfolioHistory="{snapshotHistory}"/>
 
       {/* Realizado vs Não Realizado + Destaques */}
       {portfolio.length > 0 && (
