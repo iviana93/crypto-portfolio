@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from "../supabaseClient";
 
 const BCB_CDI_SERIES = 12;
-const BCB_API_BASE = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados';
 
 const getLocalDateISO = () => {
   const now = new Date();
@@ -23,11 +22,6 @@ const formatPct = (value) => `${Number(value || 0).toFixed(2)}%`;
 const formatDate = (date) => {
   if (!date) return '—';
   const [year, month, day] = String(date).split('-');
-  return `${day}/${month}/${year}`;
-};
-
-const toBrazilApiDate = (isoDate) => {
-  const [year, month, day] = String(isoDate).split('-');
   return `${day}/${month}/${year}`;
 };
 
@@ -126,24 +120,26 @@ export default function FixedIncomeTab({ session }) {
 
     try {
       const params = new URLSearchParams({
-        formato: 'json',
-        dataInicial: toBrazilApiDate(earliestDate),
-        dataFinal: toBrazilApiDate(getLocalDateISO()),
+        dataInicial: earliestDate,
+        dataFinal: getLocalDateISO(),
       });
 
-      const response = await fetch(`${BCB_API_BASE}?${params.toString()}`);
-      if (!response.ok) throw new Error(`Banco Central respondeu HTTP ${response.status}`);
+      const response = await fetch(`/api/cdi?${params.toString()}`);
+      const responseData = await response.json().catch(() => null);
 
-      const data = await response.json();
-      if (!Array.isArray(data)) throw new Error('Formato inesperado retornado pelo Banco Central.');
+      if (!response.ok) {
+        throw new Error(responseData?.error || `API CDI respondeu HTTP ${response.status}`);
+      }
+
+      if (!Array.isArray(responseData)) {
+        throw new Error('Formato inesperado retornado pela API CDI.');
+      }
 
       const mapped = {};
-      data.forEach((item) => {
+      responseData.forEach((item) => {
         if (!item?.data) return;
-        const [day, month, year] = String(item.data).split('/');
-        const iso = `${year}-${month}-${day}`;
-        const value = Number(String(item.valor).replace(',', '.'));
-        if (Number.isFinite(value)) mapped[iso] = value;
+        const value = Number(item.valor);
+        if (Number.isFinite(value)) mapped[item.data] = value;
       });
 
       setCdiByDate(mapped);
