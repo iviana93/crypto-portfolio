@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
 import { RiskMetricsCard } from './components/RiskMetricsCard';
+import FixedIncomeTab from './components/FixedIncomeTab';
 const COLORS = ['#F7931A', '#627EEA', '#14F195', '#375BD2', '#E84142', '#F3BA2F', '#8C8C8C'];
 
 const THEME_VARS = {
@@ -116,10 +117,12 @@ function MainDashboard({ session, theme, setTheme }) {
   const [activeTab, setActiveTab] = useState('portfolio');
   const [currency, setCurrency] = useState('BRL');
   const [hasVisitedMarket, setHasVisitedMarket] = useState(false);
+  const [hasVisitedFixedIncome, setHasVisitedFixedIncome] = useState(false);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     if (tab === 'market') setHasVisitedMarket(true);
+    if (tab === 'fixedIncome') setHasVisitedFixedIncome(true);
   };
 
   return (
@@ -169,6 +172,21 @@ function MainDashboard({ session, theme, setTheme }) {
               💼 Meu Portfólio
             </button>
             <button
+              onClick={() => handleTabChange('fixedIncome')}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                border: 'none',
+                background: activeTab === 'fixedIncome' ? '#3b82f6' : 'transparent',
+                color: activeTab === 'fixedIncome' ? '#fff' : 'var(--text-muted)',
+                fontWeight: '700',
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}
+            >
+              🏦 Renda Fixa
+            </button>
+            <button
               onClick={() => handleTabChange('market')}
               style={{
                 padding: '6px 12px',
@@ -206,6 +224,11 @@ function MainDashboard({ session, theme, setTheme }) {
       <div style={{ display: activeTab === 'portfolio' ? 'block' : 'none' }}>
         <PortfolioTab session={session} currency={currency} />
       </div>
+      {hasVisitedFixedIncome && (
+        <div style={{ display: activeTab === 'fixedIncome' ? 'block' : 'none' }}>
+          <FixedIncomeTab session={session} />
+        </div>
+      )}
       {hasVisitedMarket && (
         <div style={{ display: activeTab === 'market' ? 'block' : 'none' }}>
           <MarketTab session={session} currency={currency} />
