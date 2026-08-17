@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 
 const calculateMaxDrawdown = (values) => {
     if (!Array.isArray(values) || values.length < 2) return 0;
@@ -65,6 +65,10 @@ export const RiskMetricsCard = ({
     portfolio = [],
     exchangeRate = 0,
 }) => {
+    // O atributo `title` (tooltip nativo) só aparece em hover — em celular não existe
+    // hover, então quem usa touch nunca via essas explicações. Agora um toque no card
+    // expande a explicação embaixo dele.
+    const [expandedMetric, setExpandedMetric] = useState(null);
     const { mdd, sharpe, volatility, snapshotCount, returnCount } = useMemo(() => {
         if (!Array.isArray(portfolioHistory) || portfolioHistory.length === 0) {
             return { mdd: 0, sharpe: 0, volatility: 0, snapshotCount: 0, returnCount: 0 };
@@ -103,11 +107,23 @@ export const RiskMetricsCard = ({
             });
 
             let netCashFlow = 0;
+            let hasUnconvertedTx = false;
             periodTxs.forEach((tx) => {
+                if (tx.currency === 'BRL' && !(Number.isFinite(exchangeRate) && exchangeRate > 0)) {
+                    // Sem câmbio disponível ainda pra converter essa transação em BRL pra USD.
+                    // Tratar como fluxo de caixa "zero" faria um aporte/retirada real virar
+                    // ganho ou perda fantasma no retorno do dia — melhor pular o período todo
+                    // e recalcular quando o câmbio estiver disponível (o useMemo já reprocessa
+                    // sozinho assim que a prop exchangeRate mudar).
+                    hasUnconvertedTx = true;
+                    return;
+                }
                 const usdVal = convertTransactionToUSD(tx.total, tx.currency, exchangeRate);
                 if (tx.type === 'buy') netCashFlow += usdVal;
                 if (tx.type === 'sell') netCashFlow -= usdVal;
             });
+
+            if (hasUnconvertedTx) continue;
 
             const adjReturn = (curr.value - netCashFlow) / prev.value - 1;
 
@@ -169,75 +185,61 @@ export const RiskMetricsCard = ({
                 )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px' }}>
-                {/* DRAWDOWN */}
-                <div
-                    title="A maior queda histórica do patrimônio (do topo ao fundo). Indica o seu pior cenário de perda."
-                    style={{ 
-                        background: 'var(--bg)', 
-                        border: '1px solid var(--border)', 
-                        borderRadius: '10px', 
-                        padding: '10px',
-                        cursor: 'help' 
-                    }}
-                >
-                    <p style={{ margin: '0 0 4px 0', color: 'var(--text-faint)', fontSize: '11px', fontWeight: '500' }}>
-                        Drawdown Máx.
-                    </p>
-                    <p style={{ margin: 0, color: isMddVisible ? '#ef4444' : '#10b981', fontSize: '18px', fontWeight: '800' }}>
-                        {isMddVisible ? `-${formattedMdd}%` : '0.00%'}
-                    </p>
-                </div>
-
-                {/* VOLATILIDADE */}
-                <div
-                    title="Mede a intensidade das oscilações da carteira. Quanto maior, mais 'turbulento' e arriscado é o investimento."
-                    style={{ 
-                        background: 'var(--bg)', 
-                        border: '1px solid var(--border)', 
-                        borderRadius: '10px', 
-                        padding: '10px',
-                        cursor: 'help' 
-                    }}
-                >
-                    <p style={{ margin: '0 0 4px 0', color: 'var(--text-faint)', fontSize: '11px', fontWeight: '500' }}>
-                        Volatilidade a.a.
-                    </p>
-                    <p style={{ margin: 0, color: 'var(--text)', fontSize: '18px', fontWeight: '800' }}>
-                        {formattedVol}%
-                    </p>
-                </div>
-
-                {/* SHARPE */}
-                <div
-                    title="Mede se o retorno compensa o risco. Valores acima de 1.0 indicam boa eficiência em relação à renda fixa."
-                    style={{ 
-                        background: 'var(--bg)', 
-                        border: '1px solid var(--border)', 
-                        borderRadius: '10px', 
-                        padding: '10px',
-                        cursor: 'help' 
-                    }}
-                >
-                    <p style={{ margin: '0 0 4px 0', color: 'var(--text-faint)', fontSize: '11px', fontWeight: '500' }}>
-                        Índice Sharpe
-                    </p>
-                    <p
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(88px, 1fr))', gap: '10px' }}>
+                {[
+                    {
+                        key: 'mdd',
+                        label: 'Drawdown Máx.',
+                        value: isMddVisible ? `-${formattedMdd}%` : '0.00%',
+                        color: isMddVisible ? '#ef4444' : '#10b981',
+                        explanation: 'A maior queda histórica do patrimônio (do topo ao fundo). Indica o seu pior cenário de perda.',
+                    },
+                    {
+                        key: 'volatility',
+                        label: 'Volatilidade a.a.',
+                        value: `${formattedVol}%`,
+                        color: 'var(--text)',
+                        explanation: "Mede a intensidade das oscilações da carteira. Quanto maior, mais 'turbulento' e arriscado é o investimento.",
+                    },
+                    {
+                        key: 'sharpe',
+                        label: 'Índice Sharpe',
+                        value: formattedSharpe,
+                        color: sharpe >= 1 ? '#10b981' : sharpe < 0 ? '#ef4444' : '#3b82f6',
+                        explanation: 'Mede se o retorno compensa o risco. Valores acima de 1.0 indicam boa eficiência em relação à renda fixa.',
+                    },
+                ].map((metric) => (
+                    <div
+                        key={metric.key}
+                        title={metric.explanation}
+                        onClick={() => setExpandedMetric((curr) => (curr === metric.key ? null : metric.key))}
                         style={{
-                            margin: 0,
-                            fontSize: '18px',
-                            fontWeight: '800',
-                            color: sharpe >= 1 ? '#10b981' : sharpe < 0 ? '#ef4444' : '#3b82f6',
+                            background: 'var(--bg)',
+                            border: expandedMetric === metric.key ? '1px solid var(--text-muted)' : '1px solid var(--border)',
+                            borderRadius: '10px',
+                            padding: '10px',
+                            cursor: 'pointer',
                         }}
                     >
-                        {formattedSharpe}
-                    </p>
-                </div>
+                        <p style={{ margin: '0 0 4px 0', color: 'var(--text-faint)', fontSize: '11px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {metric.label}
+                            <span style={{ fontSize: '10px', color: 'var(--text-faint)' }}>ⓘ</span>
+                        </p>
+                        <p style={{ margin: 0, color: metric.color, fontSize: '18px', fontWeight: '800' }}>
+                            {metric.value}
+                        </p>
+                        {expandedMetric === metric.key && (
+                            <p style={{ margin: '8px 0 0 0', fontSize: '10px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                                {metric.explanation}
+                            </p>
+                        )}
+                    </div>
+                ))}
             </div>
 
             <p style={{ margin: '12px 0 0 0', color: 'var(--text-faint)', fontSize: '10px', lineHeight: '1.4' }}>
                 {isLowData
-                    ? '*Métricas preliminares. O Índice Sharpe e a Volatilidade ganham precisão estatística a partir de 30 a 90 dias de histórico.'
+                    ? `*Métricas preliminares (baseadas em ${snapshotCount} registros de patrimônio). O Índice Sharpe e a Volatilidade ganham precisão estatística a partir de 30 a 90 dias de histórico.`
                     : '*Retornos ajustados por aportes/retiradas. Sharpe calculado com taxa livre de risco de 4% a.a.'}
             </p>
         </div>
