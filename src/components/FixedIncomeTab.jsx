@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { supabase } from './supabaseClient';
+import { supabase } from "../supabaseClient";
 
 const BCB_CDI_SERIES = 12;
 const BCB_API_BASE = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados';
