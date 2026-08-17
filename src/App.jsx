@@ -426,7 +426,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
                         onMouseLeave={() => setHighlightedDate(null)}
                         style={{
                           display: 'flex',
-                          justify: 'space-between',
+                          justifyContent: 'space-between',
                           alignItems: 'center',
                           gap: '10px',
                           background: highlightedDate === label ? 'rgba(245, 158, 11, 0.12)' : 'var(--bg)',
@@ -479,10 +479,26 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
 
 // --- ABA 1: PORTFÓLIO ---
 function PortfolioTab({ session, currency }) {
+  const PRICE_CACHE_KEY = 'crypto_tracker_last_prices_v1';
+  const ICON_CACHE_KEY = 'crypto_tracker_coin_icons_v1';
+
+  const loadCachedJSON = (key, fallback) => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+
   const [portfolio, setPortfolio] = useState([]);
-  const [prices, setPrices] = useState({});
+  // Começa com o último preço conhecido salvo no navegador, pra nunca mostrar
+  // R$0,00 enquanto a primeira chamada não termina — e como rede de segurança
+  // caso a API esteja com limite de requisições excedido (429).
+  const [prices, setPrices] = useState(() => loadCachedJSON(PRICE_CACHE_KEY, {}));
   const [fetchingPrices, setFetchingPrices] = useState(true);
-  const [coinIcons, setCoinIcons] = useState({});
+  const [pricesStale, setPricesStale] = useState(false);
+  const [coinIcons, setCoinIcons] = useState(() => loadCachedJSON(ICON_CACHE_KEY, {}));
   const [coinCategories, setCoinCategories] = useState({});
 
   // Estado do botão "Olhinho" (ocultar/mostrar valores) com persistência
@@ -506,7 +522,7 @@ function PortfolioTab({ session, currency }) {
   const [walletLabel, setWalletLabel] = useState('');
 
   const [showFeeCalc, setShowFeeCalc] = useState(false);
-  const [feePercent, setFeePercent] = useState('1.49');
+  const [feeAmount, setFeeAmount] = useState('');
   const [liveMarketPrice, setLiveMarketPrice] = useState(null);
   const [fetchingLivePrice, setFetchingLivePrice] = useState(false);
 
@@ -536,20 +552,43 @@ function PortfolioTab({ session, currency }) {
   }, []);
 
   useEffect(() => {
-    if (!selectedCoin) {
-      setLiveMarketPrice(null);
+    // Só busca o preço ao vivo se a calculadora de taxa está aberta — evita gastar
+    // cota da API toda vez que alguém apenas seleciona uma moeda no formulário.
+    if (!selectedCoin || !showFeeCalc) return;
+
+    const currKeyLocal = currency.toLowerCase();
+
+    // Se essa moeda já está na carteira, já temos o preço vindo do polling normal
+    // do portfólio — reaproveita em vez de fazer uma chamada extra à API.
+    const alreadyKnown = prices[selectedCoin.id]?.[currKeyLocal];
+    if (alreadyKnown) {
+      setLiveMarketPrice(alreadyKnown);
       return;
     }
+
     let cancelled = false;
+    const cacheKey = `fee_calc_price_${selectedCoin.id}_${currKeyLocal}`;
+
     const fetchLivePrice = async () => {
+      try {
+        const cached = JSON.parse(sessionStorage.getItem(cacheKey) || 'null');
+        if (cached && Date.now() - cached.ts < 60000) {
+          setLiveMarketPrice(cached.price);
+          return;
+        }
+      } catch { /* cache inválido, ignora */ }
+
       setFetchingLivePrice(true);
       try {
         const res = await fetch(
-          `https://api.coingecko.com/api/v3/simple/price?ids=${selectedCoin.id}&vs_currencies=${currency.toLowerCase()}`
+          `https://api.coingecko.com/api/v3/simple/price?ids=${selectedCoin.id}&vs_currencies=${currKeyLocal}`
         );
         const data = await res.json();
-        const p = data?.[selectedCoin.id]?.[currency.toLowerCase()];
-        if (!cancelled && p) setLiveMarketPrice(p);
+        const p = data?.[selectedCoin.id]?.[currKeyLocal];
+        if (!cancelled && p) {
+          setLiveMarketPrice(p);
+          try { sessionStorage.setItem(cacheKey, JSON.stringify({ price: p, ts: Date.now() })); } catch { /* ignore quota errors */ }
+        }
       } catch (err) {
         console.warn('Não foi possível buscar o preço de mercado ao vivo:', err.message);
       } finally {
@@ -558,7 +597,7 @@ function PortfolioTab({ session, currency }) {
     };
     fetchLivePrice();
     return () => { cancelled = true; };
-  }, [selectedCoin, currency]);
+  }, [selectedCoin, currency, showFeeCalc]);
 
   useEffect(() => {
     const fetchOfficialRate = async () => {
@@ -772,44 +811,106 @@ function PortfolioTab({ session, currency }) {
 
   useEffect(() => {
     if (portfolio.length === 0) {
-      setPrices({});
-      setCoinIcons({});
       setFetchingPrices(false);
       return;
     }
 
+    let cancelled = false;
+
     const fetchMarketData = async () => {
-      const ids = [...new Set(portfolio.map(item => item.coin_id))].join(',');
+      const uniqueIds = [...new Set(portfolio.map(item => item.coin_id))];
+      const ids = uniqueIds.join(',');
+
       try {
-        const usdRes = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}`);
-        const usdData = await usdRes.json();
+        // Uma ÚNICA chamada pra USD e BRL juntos (em vez de duas chamadas separadas
+        // ao endpoint /coins/markets). Isso corta pela metade o consumo da cota
+        // gratuita da CoinGecko nessa atualização recorrente de preços.
+        const priceRes = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,brl`
+        );
+        const priceData = await priceRes.json();
+
+        // Se a API estiver com limite de requisições excedido (429) ou responder
+        // algo inesperado, priceData não vem como o objeto esperado. Nesse caso NÃO
+        // sobrescrevemos os preços já exibidos — só marcamos como "desatualizado" e
+        // tentamos de novo no próximo ciclo, em vez de zerar tudo na tela.
+        if (!priceData || typeof priceData !== 'object' || Array.isArray(priceData) || priceData.status?.error_code) {
+          if (!cancelled) setPricesStale(true);
+          return;
+        }
 
         const priceMap = {};
-        const iconMap = {};
-        (usdData || []).forEach((coin) => {
-          priceMap[coin.id] = { usd: coin.current_price };
-          iconMap[coin.id] = coin.image;
-        });
-        setCoinIcons(iconMap);
-
-        const brlRes = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=brl&ids=${ids}`);
-        const brlData = await brlRes.json();
-        (brlData || []).forEach((coin) => {
-          if (priceMap[coin.id]) priceMap[coin.id].brl = coin.current_price;
+        uniqueIds.forEach((id) => {
+          if (priceData[id]) {
+            priceMap[id] = { usd: priceData[id].usd, brl: priceData[id].brl };
+          }
         });
 
+        if (cancelled) return;
         setPrices(priceMap);
+        setPricesStale(false);
+        try { localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify(priceMap)); } catch { /* ignore quota errors */ }
         saveTodaySnapshot(priceMap);
+
+        // Ícones praticamente nunca mudam, então só buscamos os que ainda não temos
+        // guardados (localStorage), em vez de refazer isso a cada ciclo de 3 minutos.
+        const missingIconIds = uniqueIds.filter((id) => !coinIcons[id]);
+        if (missingIconIds.length > 0) {
+          try {
+            const iconRes = await fetch(
+              `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${missingIconIds.join(',')}`
+            );
+            const iconData = await iconRes.json();
+            if (Array.isArray(iconData) && !cancelled) {
+              setCoinIcons((prev) => {
+                const next = { ...prev };
+                iconData.forEach((coin) => { next[coin.id] = coin.image; });
+                try { localStorage.setItem(ICON_CACHE_KEY, JSON.stringify(next)); } catch { /* ignore quota errors */ }
+                return next;
+              });
+            }
+          } catch (err) {
+            console.warn('Erro ao buscar ícones (não crítico):', err.message);
+          }
+        }
       } catch (err) {
         console.error('Erro ao buscar cotações:', err);
+        if (!cancelled) setPricesStale(true);
       } finally {
-        setFetchingPrices(false);
+        if (!cancelled) setFetchingPrices(false);
       }
     };
 
     fetchMarketData();
-    const interval = setInterval(fetchMarketData, 90000);
-    return () => clearInterval(interval);
+
+    // Só continua consultando a API enquanto a aba está visível — pausar quando o
+    // usuário troca de aba/minimiza economiza boa parte da cota gratuita, já que
+    // não faz sentido gastar requisições atualizando uma tela que ninguém está vendo.
+    let interval = null;
+    const startPolling = () => {
+      if (interval) return;
+      interval = setInterval(fetchMarketData, 180000); // 3 minutos
+    };
+    const stopPolling = () => {
+      if (interval) { clearInterval(interval); interval = null; }
+    };
+    const handleVisibility = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        fetchMarketData();
+        startPolling();
+      }
+    };
+
+    if (!document.hidden) startPolling();
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      cancelled = true;
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [portfolio]);
 
   useEffect(() => {
@@ -1500,6 +1601,9 @@ function PortfolioTab({ session, currency }) {
                     onClick={() => {
                       setSelectedCoin(coin);
                       setSearchResults([]);
+                      setLiveMarketPrice(null);
+                      setShowFeeCalc(false);
+                      setFeeAmount('');
                     }}
                     style={{ padding: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border)', color: 'var(--text)', fontSize: '13px' }}
                   >
@@ -1599,8 +1703,8 @@ function PortfolioTab({ session, currency }) {
                     <input
                       type="number"
                       step="any"
-                      value={feePercent}
-                      onChange={(e) => setFeePercent(e.target.value)}
+                      value={feeAmount}
+                      onChange={(e) => setFeeAmount(e.target.value)}
                       placeholder="Ex: 2.05"
                       style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: '12px', boxSizing: 'border-box' }}
                     />
@@ -1609,11 +1713,19 @@ function PortfolioTab({ session, currency }) {
 
                 {(() => {
                   const total = parseFloat(totalSpent);
-                  const feeInCurrency = parseFloat(feePercent);
+                  const feeInCurrency = parseFloat(feeAmount);
                   const price = liveMarketPrice;
                   if (!total || !price || isNaN(feeInCurrency)) return null;
 
-                  const netFiatSpent = Math.max(0, total - feeInCurrency);
+                  if (feeInCurrency >= total) {
+                    return (
+                      <p style={{ margin: 0, fontSize: '11px', color: '#ef4444' }}>
+                        A taxa informada é maior ou igual ao total pago — confira os valores.
+                      </p>
+                    );
+                  }
+
+                  const netFiatSpent = total - feeInCurrency;
                   const netAmount = netFiatSpent / price;
                   const effectivePrice = total / netAmount;
 
