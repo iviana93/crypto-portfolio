@@ -732,11 +732,23 @@ function PortfolioTab({ session, currency }) {
   const saveTodaySnapshot = async (freshPrices) => {
     if (portfolio.length === 0) return;
 
-    const totalInvestedUSD = portfolio.reduce((acc, c) => acc + c.amount * c.buy_price, 0);
-    const currentValueUSD = portfolio.reduce((acc, c) => {
-      const priceUSD = freshPrices[c.coin_id]?.usd || c.buy_price;
-      return acc + c.amount * priceUSD;
+    // IMPORTANTE: antes esse cálculo usava `c.amount * c.buy_price` (um custo médio
+    // já convertido pra USD no momento da compra) e depois reconvertia pra BRL na
+    // hora de desenhar o gráfico. Como a cotação do dólar muda com o tempo, essa
+    // ida-e-volta BRL -> USD -> BRL em momentos diferentes fazia o último ponto do
+    // gráfico não bater com o card "Lucro/Prejuízo Total" (que usa outro cálculo).
+    // Agora usamos exatamente a mesma fórmula dos cards (getItemTotalPaid e o preço
+    // já no `currency` atual) e só convertemos pra USD no final, no MESMO instante,
+    // pra manter os dois sempre consistentes entre si.
+    const priceKey = currency.toLowerCase();
+    const totalInvestedNow = portfolio.reduce((acc, c) => acc + getItemTotalPaid(c, currency), 0);
+    const currentValueNow = portfolio.reduce((acc, c) => {
+      const price = freshPrices[c.coin_id]?.[priceKey] || convertToDisplayCurrency(c.buy_price);
+      return acc + (c.amount * price);
     }, 0);
+
+    const totalInvestedUSD = convertAnyToUSD(totalInvestedNow, currency);
+    const currentValueUSD = convertAnyToUSD(currentValueNow, currency);
 
     try {
       const { error } = await supabase.from('portfolio_snapshots').upsert(
