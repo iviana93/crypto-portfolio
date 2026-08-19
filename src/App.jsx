@@ -312,7 +312,7 @@ function MainDashboard({ session, theme, setTheme }) {
           </div>
           <div className="cv-page-heading">
             <span className="cv-eyebrow">{activeTab === 'portfolio' ? 'VISÃO GERAL' : activeTab === 'market' ? 'MERCADO' : 'RENDA FIXA'}</span>
-            <h1>{activeTab === 'portfolio' ? 'Meu Portfólio' : activeTab === 'market' ? 'Mercado' : 'Renda Fixa'}</h1>
+            <h1>{activeTab === 'portfolio' ? 'Meu Portfólio' : activeTab === 'market' ? 'Cotações do Dia' : 'Visão Geral'}</h1>
           </div>
           <div className="cv-top-actions">
             <div className="cv-currency-switch" aria-label="Moeda de exibição">
