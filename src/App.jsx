@@ -1358,7 +1358,35 @@ function PortfolioTab({ session, currency }) {
     await loadPortfolio();
   };
 
-  const totalInvested = portfolio.reduce((acc, c) => acc + getItemTotalPaid(c, currency), 0);
+  // Calcula o total investido pegando SEMPRE o valor original de cada compra (sem converter moeda)
+  // Isso garante que o total investido seja EXATAMENTE o que você registrou na compra
+  const getTotalInvestedFixed = () => {
+    let totalInUSD = 0;
+    
+    portfolio.forEach((item) => {
+      if (!item.history || item.history.length === 0) {
+        // Fallback: usa o buy_price que já está em USD
+        totalInUSD += item.buy_price * item.amount;
+      } else {
+        // Pega cada transação de compra e converte para USD UMA VEZ
+        item.history.forEach((tx) => {
+          if (tx.type === 'buy') {
+            // Converte o valor original para USD usando a cotação original
+            const txInUSD = convertCurrency(tx.total, tx.currency, 'USD');
+            totalInUSD += txInUSD;
+          }
+        });
+      }
+    });
+    
+    return totalInUSD;
+  };
+
+  // Total investido em USD (nunca muda, é o valor que você realmente gastou)
+  const totalInvestedUSD = getTotalInvestedFixed();
+  
+  // Converte para moeda de exibição uma única vez
+  const totalInvested = convertCurrency(totalInvestedUSD, 'USD', currency);
 
   const currentValue = portfolio.reduce((acc, c) => {
     const price = prices[c.coin_id]?.[currKey] || convertToDisplayCurrency(c.buy_price);
