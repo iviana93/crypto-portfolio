@@ -1358,45 +1358,29 @@ function PortfolioTab({ session, currency }) {
     await loadPortfolio();
   };
 
-  // Calcula o total investido pegando SEMPRE o valor original de cada compra
-  // IMPORTANTE: Retorna SEMPRE em USD, NUNCA converte para outra moeda
-  // Isso garante que seja EXATAMENTE o que você registrou na compra
-  const getTotalInvestedFixed = () => {
-    let totalInUSD = 0;
-    
-    portfolio.forEach((item) => {
-      if (!item.history || item.history.length === 0) {
-        // Fallback: usa o buy_price que já está em USD
-        totalInUSD += item.buy_price * item.amount;
-      } else {
-        // Pega cada transação de compra
-        item.history.forEach((tx) => {
-          if (tx.type === 'buy') {
-            // Se a transação é em USD, usa direto
-            // Se é em BRL, divide pela taxa que estava no momento (tx.exchange_rate se disponível)
-            if (tx.currency === 'USD') {
-              totalInUSD += tx.total;
-            } else if (tx.currency === 'BRL') {
-              // Usa a taxa de câmbio que estava no dia da transação, se existir
-              const rateAtTx = tx.exchange_rate || exchangeRate || 5;
-              totalInUSD += tx.total / rateAtTx;
-            }
-          }
-        });
+  // Descobre a moeda original das transações
+  const getOriginalCurrency = () => {
+    for (const item of portfolio) {
+      if (item.history && item.history.length > 0) {
+        const firstBuy = item.history.find(tx => tx.type === 'buy');
+        if (firstBuy && firstBuy.currency) {
+          return firstBuy.currency;
+        }
       }
-    });
-    
-    return totalInUSD;
+    }
+    return 'BRL';
   };
 
-  // Total investido em USD (NUNCA muda - é sempre o valor que você realmente gastou)
-  // NUNCA reconverte para BRL ou outra moeda, para evitar flutuações
-  const totalInvested = getTotalInvestedFixed();
+  const originalCurrency = getOriginalCurrency();
+  
+  // IMPORTANTE: Total investido SEMPRE na moeda original, NUNCA muda com o seletor BRL/USD
+  const totalInvested = portfolio.reduce((acc, c) => acc + getItemTotalPaid(c, originalCurrency), 0);
 
-  // currentValue SEMPRE em USD (como totalInvested) para não flutuarem juntos
+  // CurrentValue também na moeda original para o cálculo de P&L fazer sentido
   const currentValue = portfolio.reduce((acc, c) => {
-    const priceUSD = prices[c.coin_id]?.['USD'] || c.buy_price;
-    return acc + (c.amount * priceUSD);
+    const currencyKey = originalCurrency === 'BRL' ? 'BRL' : 'USD';
+    const price = prices[c.coin_id]?.[currencyKey] || convertToDisplayCurrency(c.buy_price);
+    return acc + (c.amount * price);
   }, 0);
   const totalPnl = currentValue - totalInvested;
   const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
@@ -1543,9 +1527,10 @@ function PortfolioTab({ session, currency }) {
           <h2 style={{ margin: '4px 0 0 0', fontSize: '18px', color: 'var(--text)', fontWeight: '800' }}>
             {isLoadingSummary ? (
               <span style={{ fontSize: '13px', color: 'var(--text-faint)', fontWeight: '600' }}>Carregando...</span>
+            ) : showValues ? (
+              `${originalCurrency === 'BRL' ? 'R$' : '$'} ${currentValue.toLocaleString(originalCurrency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             ) : (
-              // Sempre mostra em USD para manter consistência com "Total Investido"
-              `$ ${currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              '••••••••'
             )}
           </h2>
         </div>
@@ -1556,9 +1541,10 @@ function PortfolioTab({ session, currency }) {
           <h2 style={{ margin: '4px 0 0 0', fontSize: '18px', color: 'var(--text)', fontWeight: '800' }}>
             {isLoadingSummary ? (
               <span style={{ fontSize: '13px', color: 'var(--text-faint)', fontWeight: '600' }}>Carregando...</span>
+            ) : showValues ? (
+              `${originalCurrency === 'BRL' ? 'R$' : '$'} ${totalInvested.toLocaleString(originalCurrency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             ) : (
-              // Sempre mostra em USD para não flutuar com a taxa de câmbio
-              `$ ${totalInvested.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              '••••••••'
             )}
           </h2>
         </div>
@@ -1571,8 +1557,7 @@ function PortfolioTab({ session, currency }) {
               <span style={{ fontSize: '13px', color: 'var(--text-faint)', fontWeight: '600' }}>Carregando...</span>
             ) : showValues ? (
               <>
-                {/* Sempre mostra em USD, consistente com Total Investido e Patrimônio Atual */}
-                $ {totalPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {originalCurrency === 'BRL' ? 'R$' : '$'} {totalPnl.toLocaleString(originalCurrency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 <span style={{ fontSize: '11px', display: 'block', fontWeight: '600', marginTop: '2px' }}>
                   ({totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
                 </span>
