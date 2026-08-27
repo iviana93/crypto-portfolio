@@ -1358,30 +1358,22 @@ function PortfolioTab({ session, currency }) {
     await loadPortfolio();
   };
 
-  // Descobre a moeda original das transações
-  const getOriginalCurrency = () => {
-    for (const item of portfolio) {
-      if (item.history && item.history.length > 0) {
-        const firstBuy = item.history.find(tx => tx.type === 'buy');
-        if (firstBuy && firstBuy.currency) {
-          return firstBuy.currency;
-        }
-      }
-    }
-    return 'BRL';
-  };
+  // Todos os valores consolidados usam a moeda atualmente selecionada (BRL/USD).
+  // Cada transação é convertida para a moeda de exibição por getItemTotalPaid(),
+  // e o patrimônio atual usa o preço de mercado atual da mesma moeda.
+  // Assim, trocar BRL <-> USD atualiza Patrimônio, Total Investido e P/L juntos.
+  const totalInvested = portfolio.reduce(
+    (acc, c) => acc + getItemTotalPaid(c, currency),
+    0
+  );
 
-  const originalCurrency = getOriginalCurrency();
-  
-  // IMPORTANTE: Total investido SEMPRE na moeda original, NUNCA muda com o seletor BRL/USD
-  const totalInvested = portfolio.reduce((acc, c) => acc + getItemTotalPaid(c, originalCurrency), 0);
-
-  // CurrentValue também na moeda original para o cálculo de P&L fazer sentido
   const currentValue = portfolio.reduce((acc, c) => {
-    const currencyKey = originalCurrency === 'BRL' ? 'BRL' : 'USD';
-    const price = prices[c.coin_id]?.[currencyKey] || convertToDisplayCurrency(c.buy_price);
-    return acc + (c.amount * price);
+    const currentPrice = prices[c.coin_id]?.[currKey];
+    const fallbackPrice = convertCurrency(c.buy_price, 'USD', currency);
+    const price = Number.isFinite(Number(currentPrice)) ? Number(currentPrice) : fallbackPrice;
+    return acc + (Number(c.amount) || 0) * price;
   }, 0);
+
   const totalPnl = currentValue - totalInvested;
   const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
 
@@ -1409,7 +1401,7 @@ function PortfolioTab({ session, currency }) {
   const categoryAllocation = (() => {
     const totals = {};
     portfolio.forEach((c) => {
-      const price = prices[c.coin_id]?.[currKey] || convertToDisplayCurrency(c.buy_price);
+      const price = prices[c.coin_id]?.[currKey] || convertCurrency(c.buy_price, 'USD', currency);
       const value = c.amount * price;
       const category = coinCategories[c.coin_id] || 'Outros';
       totals[category] = (totals[category] || 0) + value;
@@ -1426,7 +1418,7 @@ function PortfolioTab({ session, currency }) {
     : portfolio.filter((c) => c.wallet_label === walletFilter);
 
   const pieChartData = portfolio.map((c) => {
-    const price = prices[c.coin_id]?.[currKey] || convertToDisplayCurrency(c.buy_price);
+    const price = prices[c.coin_id]?.[currKey] || convertCurrency(c.buy_price, 'USD', currency);
     return {
       name: c.coin_symbol.toUpperCase(),
       value: c.amount * price
@@ -1528,7 +1520,7 @@ function PortfolioTab({ session, currency }) {
             {isLoadingSummary ? (
               <span style={{ fontSize: '13px', color: 'var(--text-faint)', fontWeight: '600' }}>Carregando...</span>
             ) : showValues ? (
-              `${originalCurrency === 'BRL' ? 'R$' : '$'} ${currentValue.toLocaleString(originalCurrency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              formatMoney(currentValue)
             ) : (
               '••••••••'
             )}
@@ -1542,7 +1534,7 @@ function PortfolioTab({ session, currency }) {
             {isLoadingSummary ? (
               <span style={{ fontSize: '13px', color: 'var(--text-faint)', fontWeight: '600' }}>Carregando...</span>
             ) : showValues ? (
-              `${originalCurrency === 'BRL' ? 'R$' : '$'} ${totalInvested.toLocaleString(originalCurrency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              formatMoney(totalInvested)
             ) : (
               '••••••••'
             )}
@@ -1557,7 +1549,7 @@ function PortfolioTab({ session, currency }) {
               <span style={{ fontSize: '13px', color: 'var(--text-faint)', fontWeight: '600' }}>Carregando...</span>
             ) : showValues ? (
               <>
-                {originalCurrency === 'BRL' ? 'R$' : '$'} {totalPnl.toLocaleString(originalCurrency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {formatMoney(totalPnl)}
                 <span style={{ fontSize: '11px', display: 'block', fontWeight: '600', marginTop: '2px' }}>
                   ({totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
                 </span>
