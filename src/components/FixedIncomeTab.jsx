@@ -42,8 +42,11 @@ const calculateInvestment = (investment, cdiByDate) => {
     };
   }
 
+  // O dia da aplicação não é contado como um dia completo de CDI.
+  // Também não contamos o dia atual: o CDI diário do BCB representa
+  // um dia útil já fechado, enquanto o rendimento de hoje ainda está em andamento.
   const dates = Object.keys(cdiByDate)
-    .filter((date) => date >= startDate && date <= today)
+    .filter((date) => date > startDate && date < today)
     .sort();
 
   let factor = 1;
@@ -339,7 +342,7 @@ export default function FixedIncomeTab({ session }) {
                   <th style={thStyle}>Aplicado</th>
                   <th style={thStyle}>Data</th>
                   <th style={thStyle}>CDI</th>
-                  <th style={thStyle}>Dias úteis</th>
+                  <th style={thStyle}>Dias úteis completos</th>
                   <th style={thStyle}>Rendimento</th>
                   <th style={thStyle}>Valor atual</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>Ações</th>
@@ -370,7 +373,7 @@ export default function FixedIncomeTab({ session }) {
       </div>
 
       <p style={{ margin: '0 2px', color: 'var(--text-faint)', fontSize: '10px', lineHeight: '1.5' }}>
-        * Cálculo bruto estimado usando a série diária de CDI do Banco Central (SGS {BCB_CDI_SERIES}). Não considera IR, IOF, taxas ou regras específicas do produto. O resultado pode diferir alguns centavos do saldo exibido pela instituição.
+        * Cálculo bruto estimado usando a série diária de CDI do Banco Central (SGS {BCB_CDI_SERIES}). Não considera IR, IOF, taxas ou regras específicas do produto. O dia da aplicação e o dia atual não são tratados como dias úteis completos. O resultado pode diferir do saldo exibido pela instituição.
       </p>
     </div>
   );
