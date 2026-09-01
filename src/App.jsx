@@ -882,13 +882,14 @@ function PortfolioTab({ session, currency }) {
       .from('portfolio_snapshots')
       .select('*')
       .eq('user_id', session.user.id)
-      .order('snapshot_date', { ascending: true })
+      .order('snapshot_date', { ascending: false }) // Busca os 30 registros mais RECENTES
       .limit(30);
     if (error) {
       console.error('Erro ao carregar snapshots:', error);
       return;
     }
-    setSnapshotHistory(data || []);
+    // Inverte a lista para renderizar em ordem cronológica no gráfico (do mais antigo para o mais recente)
+    setSnapshotHistory((data || []).reverse());
   };
 
   useEffect(() => {
