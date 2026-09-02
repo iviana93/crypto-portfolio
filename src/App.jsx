@@ -875,6 +875,7 @@ function PortfolioTab({ session, currency }) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  const [snapshotPeriod, setSnapshotPeriod] = useState('30'); // '30', '90', '365', 'all'
   const [snapshotHistory, setSnapshotHistory] = useState([]);
 
   const loadSnapshots = async () => {
@@ -882,19 +883,32 @@ function PortfolioTab({ session, currency }) {
       .from('portfolio_snapshots')
       .select('*')
       .eq('user_id', session.user.id)
-      .order('snapshot_date', { ascending: false }) // Busca os 30 registros mais RECENTES
-      .limit(30);
+      .order('snapshot_date', { ascending: false });
+
     if (error) {
       console.error('Erro ao carregar snapshots:', error);
       return;
     }
-    // Inverte a lista para renderizar em ordem cronológica no gráfico (do mais antigo para o mais recente)
-    setSnapshotHistory((data || []).reverse());
+
+    const allSnapshots = data || [];
+    const now = Date.now();
+
+    const filtered = allSnapshots.filter((s) => {
+      const snapshotTime = new Date(s.snapshot_date).getTime();
+      const days = (now - snapshotTime) / (1000 * 60 * 60 * 24);
+
+      if (snapshotPeriod === '30') return days <= 30;
+      if (snapshotPeriod === '90') return days <= 90;
+      if (snapshotPeriod === '365') return days <= 365;
+      return true; // 'all'
+    });
+
+    setSnapshotHistory(filtered.reverse());
   };
 
   useEffect(() => {
     loadSnapshots();
-  }, []);
+  }, [snapshotPeriod]);
 
   const saveTodaySnapshot = async (freshPrices) => {
     if (portfolio.length === 0) return;
@@ -1561,6 +1575,35 @@ function PortfolioTab({ session, currency }) {
           </h2>
         </div>
 
+      </div>
+
+      {/* Seletor de Período para P/L */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ color: 'var(--text-muted)', fontSize: '12px', fontWeight: '600' }}>
+          📈 Período do P/L:
+        </span>
+        {['30', '90', '365', 'all'].map((period) => {
+          const labels = { '30': '30 dias', '90': '90 dias', '365': '1 ano', 'all': 'Tudo' };
+          return (
+            <button
+              key={period}
+              onClick={() => setSnapshotPeriod(period)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                border: snapshotPeriod === period ? '2px solid #3b82f6' : '1px solid var(--border)',
+                background: snapshotPeriod === period ? 'rgba(59, 130, 246, 0.1)' : 'var(--bg)',
+                color: snapshotPeriod === period ? '#3b82f6' : 'var(--text-muted)',
+                cursor: 'pointer',
+                fontSize: '11px',
+                fontWeight: '600',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              {labels[period]}
+            </button>
+          );
+        })}
       </div>
 
       {/* Gráficos Consolidados */}
