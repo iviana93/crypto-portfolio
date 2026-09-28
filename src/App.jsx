@@ -930,6 +930,9 @@ function PortfolioTab({ session, currency }) {
 
   const [snapshotPeriod, setSnapshotPeriod] = useState('30'); // '30', '90', '365', 'all'
   const [snapshotHistory, setSnapshotHistory] = useState([]);
+  // Mantemos o histórico completo separado do período exibido no gráfico.
+  // Assim, o Resumo mensal nunca é afetado pelo filtro 30/60/90/1 ano.
+  const [allSnapshotHistory, setAllSnapshotHistory] = useState([]);
 
   const loadSnapshots = async () => {
     const { data, error } = await supabase
@@ -944,6 +947,7 @@ function PortfolioTab({ session, currency }) {
     }
 
     const allSnapshots = data || [];
+    setAllSnapshotHistory([...allSnapshots].reverse());
     const now = Date.now();
 
     const filtered = allSnapshots.filter((s) => {
@@ -951,6 +955,7 @@ function PortfolioTab({ session, currency }) {
       const days = (now - snapshotTime) / (1000 * 60 * 60 * 24);
 
       if (snapshotPeriod === '30') return days <= 30;
+      if (snapshotPeriod === '60') return days <= 60;
       if (snapshotPeriod === '90') return days <= 90;
       if (snapshotPeriod === '365') return days <= 365;
       return true; // 'all'
@@ -1558,7 +1563,6 @@ function PortfolioTab({ session, currency }) {
     });
     return Object.values(groups)
       .sort((a, b) => b.monthKey.localeCompare(a.monthKey))
-      .slice(0, 6)
       .map((m) => ({
         ...m,
         realizedPnl: convertToDisplayCurrency(m.realizedPnlUSD),
@@ -1569,7 +1573,7 @@ function PortfolioTab({ session, currency }) {
   // Fechamento mensal usando os snapshots diários já armazenados.
   const monthlySnapshots = (() => {
     const groups = {};
-    snapshotHistory.forEach((snap) => {
+    allSnapshotHistory.forEach((snap) => {
       const key = String(snap.snapshot_date || '').slice(0, 7);
       if (!key) return;
       if (!groups[key] || new Date(snap.snapshot_date) > new Date(groups[key].snapshot_date)) groups[key] = snap;
@@ -1589,7 +1593,7 @@ function PortfolioTab({ session, currency }) {
         invested,
         marketPnl,
       };
-    }).reverse().slice(0, 6);
+    }).reverse();
   })();
 
   const topAssetAllocation = assetsWithPnlPct.length > 0
@@ -1759,8 +1763,8 @@ function PortfolioTab({ session, currency }) {
         <span style={{ color: 'var(--text-muted)', fontSize: '12px', fontWeight: '600' }}>
           📈 Período do P/L:
         </span>
-        {['30', '90', '365', 'all'].map((period) => {
-          const labels = { '30': '30 dias', '90': '90 dias', '365': '1 ano', 'all': 'Tudo' };
+        {['30', '60', '90', '365', 'all'].map((period) => {
+          const labels = { '30': '30 dias', '60': '60 dias', '90': '90 dias', '365': '1 ano', 'all': 'Tudo' };
           return (
             <button
               key={period}
@@ -1783,79 +1787,8 @@ function PortfolioTab({ session, currency }) {
         })}
       </div>
 
-      {/* Atividade da carteira */}
-      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '14px 16px', borderRadius: '16px', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <div>
-            <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.05em' }}>Atividade da carteira</span>
-            <p style={{ margin: '4px 0 0', color: 'var(--text-faint)', fontSize: '11px' }}>
-              {operationCount === 0 ? 'Nenhuma operação registrada ainda.' : `${operationCount} operação${operationCount === 1 ? '' : 'ões'} registradas`}
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div>
-              <span style={{ color: 'var(--text-faint)', fontSize: '9px', textTransform: 'uppercase' }}>Compras</span>
-              <strong style={{ display: 'block', marginTop: '2px', color: '#10b981', fontSize: '14px' }}>{buyCount}</strong>
-            </div>
-            <div>
-              <span style={{ color: 'var(--text-faint)', fontSize: '9px', textTransform: 'uppercase' }}>Vendas</span>
-              <strong style={{ display: 'block', marginTop: '2px', color: '#ef4444', fontSize: '14px' }}>{sellCount}</strong>
-            </div>
-            <div>
-              <span style={{ color: 'var(--text-faint)', fontSize: '9px', textTransform: 'uppercase' }}>Última operação</span>
-              <strong style={{ display: 'block', marginTop: '2px', color: 'var(--text)', fontSize: '12px' }}>
-                {lastTransaction ? `${lastTransaction.type === 'buy' ? 'Compra' : 'Venda'} · ${lastTransaction.coin_symbol.toUpperCase()} · ${lastTransaction.date.split('-').reverse().join('/')}` : '—'}
-              </strong>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Resumo mensal */}
-      {(monthlyOperations.length > 0 || monthlySnapshots.length > 0) && (
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
-          <div style={{ marginBottom: '12px' }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontWeight: '700' }}>📅 Resumo mensal</span>
-            <p style={{ margin: '4px 0 0', color: 'var(--text-faint)', fontSize: '10px' }}>Compras, vendas e evolução da carteira nos meses mais recentes.</p>
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', minWidth: '650px', borderCollapse: 'collapse', fontSize: '11px' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '9px' }}>
-                  <th style={{ padding: '7px 6px', textAlign: 'left' }}>Mês</th>
-                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>Compras</th>
-                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>Vendas</th>
-                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>P/L realizado</th>
-                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>Patrimônio</th>
-                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>P/L mercado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from(new Set([...(monthlyOperations.map(x => x.monthKey)), ...(monthlySnapshots.map(x => x.key.slice(0,7)))])).sort((a,b)=>b.localeCompare(a)).slice(0,6).map((monthKey) => {
-                  const op = monthlyOperations.find(x => x.monthKey === monthKey);
-                  const snap = monthlySnapshots.find(x => x.key.slice(0,7) === monthKey);
-                  return (
-                    <tr key={monthKey} style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
-                      <td style={{ padding: '8px 6px', fontWeight: '700', color: 'var(--text)' }}>
-                        {new Date(`${monthKey}-15T00:00:00`).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '')}
-                      </td>
-                      <td style={{ padding: '8px 6px', textAlign: 'right' }}>{op ? formatMoney(op.buys) : '—'}</td>
-                      <td style={{ padding: '8px 6px', textAlign: 'right' }}>{op ? formatMoney(op.sells) : '—'}</td>
-                      <td style={{ padding: '8px 6px', textAlign: 'right', color: op?.realizedPnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>{op ? formatMoney(op.realizedPnl) : '—'}</td>
-                      <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: '700', color: 'var(--text)' }}>{snap ? formatMoney(snap.value) : '—'}</td>
-                      <td style={{ padding: '8px 6px', textAlign: 'right', color: snap?.marketPnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>{snap ? formatMoney(snap.marketPnl) : '—'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Gráficos Consolidados */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
+      {/* Evolução do P/L — mantido junto ao seletor de período */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', boxSizing: 'border-box' }}>
           <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>
             Evolução do P/L ({currency})
@@ -1951,7 +1884,81 @@ function PortfolioTab({ session, currency }) {
           )}
         </div>
 
-        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', boxSizing: 'border-box' }}>
+              </div>
+
+      {/* Atividade da carteira */}
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '14px 16px', borderRadius: '16px', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.05em' }}>Atividade da carteira</span>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-faint)', fontSize: '11px' }}>
+              {operationCount === 0 ? 'Nenhuma operação registrada ainda.' : `${operationCount} operação${operationCount === 1 ? '' : 'ões'} registradas`}
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div>
+              <span style={{ color: 'var(--text-faint)', fontSize: '9px', textTransform: 'uppercase' }}>Compras</span>
+              <strong style={{ display: 'block', marginTop: '2px', color: '#10b981', fontSize: '14px' }}>{buyCount}</strong>
+            </div>
+            <div>
+              <span style={{ color: 'var(--text-faint)', fontSize: '9px', textTransform: 'uppercase' }}>Vendas</span>
+              <strong style={{ display: 'block', marginTop: '2px', color: '#ef4444', fontSize: '14px' }}>{sellCount}</strong>
+            </div>
+            <div>
+              <span style={{ color: 'var(--text-faint)', fontSize: '9px', textTransform: 'uppercase' }}>Última operação</span>
+              <strong style={{ display: 'block', marginTop: '2px', color: 'var(--text)', fontSize: '12px' }}>
+                {lastTransaction ? `${lastTransaction.type === 'buy' ? 'Compra' : 'Venda'} · ${lastTransaction.coin_symbol.toUpperCase()} · ${lastTransaction.date.split('-').reverse().join('/')}` : '—'}
+              </strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Resumo mensal */}
+      {(monthlyOperations.length > 0 || monthlySnapshots.length > 0) && (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
+          <div style={{ marginBottom: '12px' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontWeight: '700' }}>📅 Resumo mensal</span>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-faint)', fontSize: '10px' }}>Compras, vendas e evolução da carteira nos meses mais recentes.</p>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', minWidth: '650px', borderCollapse: 'collapse', fontSize: '11px' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '9px' }}>
+                  <th style={{ padding: '7px 6px', textAlign: 'left' }}>Mês</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>Compras</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>Vendas</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>P/L realizado</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>Patrimônio</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>P/L mercado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from(new Set([...(monthlyOperations.map(x => x.monthKey)), ...(monthlySnapshots.map(x => x.key.slice(0,7)))])).sort((a,b)=>b.localeCompare(a)).map((monthKey) => {
+                  const op = monthlyOperations.find(x => x.monthKey === monthKey);
+                  const snap = monthlySnapshots.find(x => x.key.slice(0,7) === monthKey);
+                  return (
+                    <tr key={monthKey} style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+                      <td style={{ padding: '8px 6px', fontWeight: '700', color: 'var(--text)' }}>
+                        {new Date(`${monthKey}-15T00:00:00`).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '')}
+                      </td>
+                      <td style={{ padding: '8px 6px', textAlign: 'right' }}>{op ? formatMoney(op.buys) : '—'}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'right' }}>{op ? formatMoney(op.sells) : '—'}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'right', color: op?.realizedPnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>{op ? formatMoney(op.realizedPnl) : '—'}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: '700', color: 'var(--text)' }}>{snap ? formatMoney(snap.value) : '—'}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'right', color: snap?.marketPnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>{snap ? formatMoney(snap.marketPnl) : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
+<div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', boxSizing: 'border-box' }}>
           <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontWeight: '500', display: 'block', marginBottom: '8px' }}>
             Alocação de Ativos ({currency})
           </span>
