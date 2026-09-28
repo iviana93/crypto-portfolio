@@ -1892,7 +1892,7 @@ function PortfolioTab({ session, currency }) {
           <div>
             <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.05em' }}>Atividade da carteira</span>
             <p style={{ margin: '4px 0 0', color: 'var(--text-faint)', fontSize: '11px' }}>
-              {operationCount === 0 ? 'Nenhuma operação registrada ainda.' : `${operationCount} operação${operationCount === 1 ? '' : 'ões'} registradas`}
+              {operationCount === 0 ? 'Nenhuma operação registrada ainda.' : `${operationCount} operaç${operationCount === 1 ? 'ão' : 'ões'} registradas`}
             </p>
           </div>
 
