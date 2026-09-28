@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
 import { RiskMetricsCard } from './components/RiskMetricsCard';
-import FixedIncomeTab from './components/FixedIncomeTab';
 
 const GLOBAL_STYLES = `
 * { box-sizing: border-box; }
@@ -249,18 +248,15 @@ function MainDashboard({ session, theme, setTheme }) {
   const [activeTab, setActiveTab] = useState('portfolio');
   const [currency, setCurrency] = useState('BRL');
   const [hasVisitedMarket, setHasVisitedMarket] = useState(false);
-  const [hasVisitedFixedIncome, setHasVisitedFixedIncome] = useState(false);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     if (tab === 'market') setHasVisitedMarket(true);
-    if (tab === 'fixedIncome') setHasVisitedFixedIncome(true);
   };
 
   const navItems = [
     { id: 'portfolio', icon: '▣', label: 'Portfólio', hint: 'Visão geral' },
     { id: 'market', icon: '↗', label: 'Mercado', hint: 'Cotações' },
-    { id: 'fixedIncome', icon: '▤', label: 'Renda Fixa', hint: 'Investimentos' },
   ];
 
   return (
@@ -311,8 +307,8 @@ function MainDashboard({ session, theme, setTheme }) {
             <strong>CryptoVision</strong>
           </div>
           <div className="cv-page-heading">
-            <span className="cv-eyebrow">{activeTab === 'portfolio' ? 'VISÃO GERAL' : activeTab === 'market' ? 'MERCADO' : 'RENDA FIXA'}</span>
-            <h1>{activeTab === 'portfolio' ? 'Meu Portfólio' : activeTab === 'market' ? 'Cotações do Dia' : 'Visão Geral'}</h1>
+            <span className="cv-eyebrow">{activeTab === 'portfolio' ? 'VISÃO GERAL' : 'MERCADO'}</span>
+            <h1>{activeTab === 'portfolio' ? 'Meu Portfólio' : 'Cotações do Dia'}</h1>
           </div>
           <div className="cv-top-actions">
             <div className="cv-currency-switch" aria-label="Moeda de exibição">
@@ -328,7 +324,6 @@ function MainDashboard({ session, theme, setTheme }) {
 
         <div className="cv-content">
           {activeTab === 'portfolio' && <PortfolioTab session={session} currency={currency} />}
-          {hasVisitedFixedIncome && activeTab === 'fixedIncome' && <FixedIncomeTab session={session} />}
           {hasVisitedMarket && activeTab === 'market' && <MarketTab session={session} currency={currency} />}
         </div>
         <nav className="cv-bottom-nav">
@@ -1398,20 +1393,6 @@ function PortfolioTab({ session, currency }) {
   }, 0);
   const totalRealizedPnl = convertToDisplayCurrency(totalRealizedPnlUSD);
 
-  // Vendas separadas do histórico para deixar claro quando o P/L foi realizado.
-  // O valor de realized_pnl_usd é recalculado em computePositionFromHistory(),
-  // então editar/excluir uma operação também atualiza esse histórico.
-  const saleHistory = portfolio
-    .flatMap((asset) => (asset.history || [])
-      .filter((tx) => tx.type === 'sell')
-      .map((tx) => ({
-        ...tx,
-        coin_name: asset.coin_name,
-        coin_symbol: asset.coin_symbol,
-        realizedPnlDisplay: convertToDisplayCurrency(tx.realized_pnl_usd || 0),
-      })))
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-
   const assetsWithPnlPct = portfolio.map((c) => {
     const itemTotalPaid = getItemTotalPaid(c, currency);
     const buyPriceDisplay = c.amount > 0 ? itemTotalPaid / c.amount : 0;
@@ -1477,8 +1458,23 @@ function PortfolioTab({ session, currency }) {
     }
   });
 
+  // Histórico de vendas baseado no mesmo conjunto usado em “Operações por Data”.
+  // Assim, a visualização não depende de uma posição ainda estar aberta.
+  const saleHistory = allTransactions
+    .filter((tx) => tx.type === 'sell')
+    .map((tx) => ({
+      ...tx,
+      realizedPnlDisplay: convertToDisplayCurrency(tx.realized_pnl_usd || 0),
+    }))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
   const transactionDates = [...new Set(allTransactions.map(t => t.date))]
     .sort((a, b) => new Date(b) - new Date(a));
+
+  const buyCount = allTransactions.filter((tx) => tx.type === 'buy').length;
+  const sellCount = allTransactions.filter((tx) => tx.type === 'sell').length;
+  const operationCount = allTransactions.length;
+  const lastTransaction = [...allTransactions].sort((a, b) => new Date(b.date) - new Date(a.date))[0] || null;
   const isLoadingSummary = fetchingPrices && portfolio.length > 0;
 
   // Função auxiliar para formatar valores ocultos ou visíveis
@@ -1618,6 +1614,35 @@ function PortfolioTab({ session, currency }) {
             </button>
           );
         })}
+      </div>
+
+      {/* Atividade da carteira */}
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '14px 16px', borderRadius: '16px', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.05em' }}>Atividade da carteira</span>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-faint)', fontSize: '11px' }}>
+              {operationCount === 0 ? 'Nenhuma operação registrada ainda.' : `${operationCount} operação${operationCount === 1 ? '' : 'ões'} registradas`}
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div>
+              <span style={{ color: 'var(--text-faint)', fontSize: '9px', textTransform: 'uppercase' }}>Compras</span>
+              <strong style={{ display: 'block', marginTop: '2px', color: '#10b981', fontSize: '14px' }}>{buyCount}</strong>
+            </div>
+            <div>
+              <span style={{ color: 'var(--text-faint)', fontSize: '9px', textTransform: 'uppercase' }}>Vendas</span>
+              <strong style={{ display: 'block', marginTop: '2px', color: '#ef4444', fontSize: '14px' }}>{sellCount}</strong>
+            </div>
+            <div>
+              <span style={{ color: 'var(--text-faint)', fontSize: '9px', textTransform: 'uppercase' }}>Última operação</span>
+              <strong style={{ display: 'block', marginTop: '2px', color: 'var(--text)', fontSize: '12px' }}>
+                {lastTransaction ? `${lastTransaction.type === 'buy' ? 'Compra' : 'Venda'} · ${lastTransaction.coin_symbol.toUpperCase()} · ${lastTransaction.date.split('-').reverse().join('/')}` : '—'}
+              </strong>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Gráficos Consolidados */}
@@ -2154,23 +2179,41 @@ function PortfolioTab({ session, currency }) {
                 <option value="sell">🔴 Venda</option>
               </select>
 
+              <label style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
+                {editingTx.type === 'buy' ? 'Quantidade comprada' : 'Quantidade vendida'}
+              </label>
               <input
                 type="number"
                 step="any"
+                min="0"
                 placeholder="Quantidade"
                 value={editingTx.amount}
                 onChange={(e) => setEditingTx({ ...editingTx, amount: e.target.value })}
                 style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '13px', boxSizing: 'border-box' }}
               />
 
+              <label style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
+                {editingTx.type === 'buy' ? `Total pago (${editingTx.currency})` : `Total recebido (${editingTx.currency})`}
+              </label>
               <input
                 type="number"
                 step="any"
+                min="0"
                 placeholder={`Total (${editingTx.currency})`}
                 value={editingTx.total}
                 onChange={(e) => setEditingTx({ ...editingTx, total: e.target.value })}
                 style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '13px', boxSizing: 'border-box' }}
               />
+
+              {editingTx.type === 'sell' && (() => {
+                const editRow = portfolio.find((p) => p.id === editingTx.portfolioId);
+                const currentAmount = editRow ? Number(editRow.amount) : 0;
+                return (
+                  <p style={{ margin: '-2px 0 0', fontSize: '10px', color: '#f59e0b' }}>
+                    Saldo atual desta posição: {currentAmount} {editRow?.coin_symbol?.toUpperCase() || ''}
+                  </p>
+                );
+              })()}
 
               <select
                 value={editingTx.currency}
