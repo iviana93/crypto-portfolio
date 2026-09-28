@@ -1398,6 +1398,20 @@ function PortfolioTab({ session, currency }) {
   }, 0);
   const totalRealizedPnl = convertToDisplayCurrency(totalRealizedPnlUSD);
 
+  // Vendas separadas do histórico para deixar claro quando o P/L foi realizado.
+  // O valor de realized_pnl_usd é recalculado em computePositionFromHistory(),
+  // então editar/excluir uma operação também atualiza esse histórico.
+  const saleHistory = portfolio
+    .flatMap((asset) => (asset.history || [])
+      .filter((tx) => tx.type === 'sell')
+      .map((tx) => ({
+        ...tx,
+        coin_name: asset.coin_name,
+        coin_symbol: asset.coin_symbol,
+        realizedPnlDisplay: convertToDisplayCurrency(tx.realized_pnl_usd || 0),
+      })))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
   const assetsWithPnlPct = portfolio.map((c) => {
     const itemTotalPaid = getItemTotalPaid(c, currency);
     const buyPriceDisplay = c.amount > 0 ? itemTotalPaid / c.amount : 0;
@@ -1638,6 +1652,69 @@ function PortfolioTab({ session, currency }) {
               </ResponsiveContainer>
             </div>
           )}
+
+          {saleHistory.length > 0 && (
+            <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px', marginBottom: '8px' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                  Histórico de vendas
+                </span>
+                <span style={{ color: 'var(--text-faint)', fontSize: '10px' }}>
+                  P/L realizado
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '190px', overflowY: 'auto' }}>
+                {saleHistory.slice(0, 8).map((sale, index) => {
+                  const saleTotal = convertCurrency(sale.total, sale.currency, currency);
+                  const pnl = sale.realizedPnlDisplay;
+                  return (
+                    <div
+                      key={`${sale.date}-${sale.coin_symbol}-${index}`}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '78px minmax(0,1fr) auto',
+                        gap: '8px',
+                        alignItems: 'center',
+                        padding: '8px 9px',
+                        border: '1px solid var(--border)',
+                        borderRadius: '7px',
+                        background: 'var(--bg)',
+                      }}
+                    >
+                      <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
+                        {sale.date.split('-').reverse().join('/')}
+                      </span>
+
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: 'var(--text)', fontSize: '11px', fontWeight: '750', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          🔴 {sale.coin_symbol.toUpperCase()} · {Math.abs(sale.amount).toLocaleString('pt-BR', { maximumFractionDigits: 8 })}
+                        </div>
+                        <div style={{ color: 'var(--text-faint)', fontSize: '9px', marginTop: '2px' }}>
+                          Recebido: {showValues ? `${currencySymbol} ${saleTotal.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '••••••••'}
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <div style={{ color: pnl >= 0 ? '#10b981' : '#ef4444', fontSize: '11px', fontWeight: '800' }}>
+                          {showValues ? `${pnl >= 0 ? '+' : ''}${currencySymbol} ${Math.abs(pnl).toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '••••••'}
+                        </div>
+                        <div style={{ color: 'var(--text-faint)', fontSize: '9px' }}>
+                          {pnl >= 0 ? 'lucro realizado' : 'prejuízo realizado'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {saleHistory.length > 8 && (
+                <div style={{ marginTop: '7px', color: 'var(--text-faint)', fontSize: '9px', textAlign: 'right' }}>
+                  Mostrando as 8 vendas mais recentes · veja todas em “Operações por Data”.
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', boxSizing: 'border-box' }}>
@@ -1695,6 +1772,9 @@ function PortfolioTab({ session, currency }) {
                 <p style={{ margin: '4px 0 0 0', fontSize: '16px', fontWeight: '800', color: totalRealizedPnl >= 0 ? '#10b981' : '#ef4444' }}>
                   {formatMoney(totalRealizedPnl)}
                 </p>
+                <span style={{ display: 'block', marginTop: '3px', color: 'var(--text-faint)', fontSize: '9px' }}>
+                  Soma do lucro/prejuízo já encerrado nas vendas
+                </span>
               </div>
               <div>
                 <span style={{ color: 'var(--text-faint)', fontSize: '11px', textTransform: 'uppercase', fontWeight: '600' }}>Não realizado (em aberto)</span>
@@ -1753,13 +1833,27 @@ function PortfolioTab({ session, currency }) {
 
       {/* Formulário de Registro */}
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
-        <h3 style={{ margin: '0 0 14px 0', fontSize: '15px', color: 'var(--text)' }}>➕ Registrar Nova Compra / Venda</h3>
+        <h3 style={{ margin: '0 0 4px 0', fontSize: '15px', color: 'var(--text)' }}>
+          {txType === 'buy' ? '➕ Registrar compra' : '🔴 Registrar venda'}
+        </h3>
+        <p style={{ margin: '0 0 14px 0', fontSize: '10px', color: 'var(--text-faint)' }}>
+          {txType === 'buy'
+            ? 'Informe quanto comprou e quanto pagou no total.'
+            : 'Informe quanto vendeu e quanto recebeu no total. O P/L realizado será calculado automaticamente.'}
+        </p>
         <form onSubmit={handleAddAsset} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
 
           <select
             value={txType}
-            onChange={e => setTxType(e.target.value)}
-            style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: txType === 'buy' ? '#10b981' : '#ef4444', fontWeight: 'bold', fontSize: '13px' }}
+            onChange={e => {
+              const nextType = e.target.value;
+              setTxType(nextType);
+              setAmount('');
+              setTotalSpent('');
+              setShowFeeCalc(false);
+              setFeeAmount('');
+            }}
+            style={{ padding: '10px', borderRadius: '8px', border: `1px solid ${txType === 'buy' ? 'rgba(16,185,129,.35)' : 'rgba(239,68,68,.35)'}`, background: txType === 'buy' ? 'rgba(16,185,129,.07)' : 'rgba(239,68,68,.07)', color: txType === 'buy' ? '#10b981' : '#ef4444', fontWeight: '800', fontSize: '13px' }}
           >
             <option value="buy">🟢 Compra</option>
             <option value="sell">🔴 Venda</option>
@@ -1799,32 +1893,57 @@ function PortfolioTab({ session, currency }) {
               </ul>
             )}
 
-            {selectedCoin && portfolio.some((p) => p.coin_id === selectedCoin.id) && (
-              <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#60a5fa' }}>
-                Você já possui essa moeda — essa operação será somada à posição existente.
+            {selectedCoin && txType === 'sell' && (() => {
+              const position = portfolio.find((p) => p.coin_id === selectedCoin.id);
+              const available = position ? Number(position.amount) : 0;
+              return (
+                <p style={{ margin: '5px 0 0 0', fontSize: '11px', color: available > 0 ? '#f59e0b' : '#ef4444', fontWeight: '600' }}>
+                  {available > 0
+                    ? `Disponível para venda: ${available} ${selectedCoin.symbol.toUpperCase()}`
+                    : 'Essa moeda não possui saldo disponível para venda.'}
+                </p>
+              );
+            })()}
+
+            {selectedCoin && txType === 'buy' && portfolio.some((p) => p.coin_id === selectedCoin.id) && (
+              <p style={{ margin: '5px 0 0 0', fontSize: '11px', color: '#60a5fa' }}>
+                Você já possui essa moeda — a compra será somada à posição existente.
               </p>
             )}
           </div>
 
-          <input
-            type="number"
-            step="any"
-            placeholder="Qtd Comprada"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            required
-            style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '13px', boxSizing: 'border-box' }}
-          />
+          <div>
+            <label style={{ display: 'block', marginBottom: '5px', fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+              {txType === 'buy' ? 'Quantidade comprada' : 'Quantidade vendida'}
+            </label>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              max={txType === 'sell' && selectedCoin ? (portfolio.find((p) => p.coin_id === selectedCoin.id)?.amount || undefined) : undefined}
+              placeholder={txType === 'buy' ? 'Ex.: 0,005' : 'Ex.: 0,002'}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '13px', boxSizing: 'border-box' }}
+            />
+          </div>
 
-          <input
-            type="number"
-            step="any"
-            placeholder={`Total Pago (${currency})`}
-            value={totalSpent}
-            onChange={(e) => setTotalSpent(e.target.value)}
-            required
-            style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '13px', boxSizing: 'border-box' }}
-          />
+          <div>
+            <label style={{ display: 'block', marginBottom: '5px', fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+              {txType === 'buy' ? `Total pago (${currency})` : `Total recebido (${currency})`}
+            </label>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              placeholder={txType === 'buy' ? `Ex.: 500 (${currency})` : `Ex.: 650 (${currency})`}
+              value={totalSpent}
+              onChange={(e) => setTotalSpent(e.target.value)}
+              required
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '13px', boxSizing: 'border-box' }}
+            />
+          </div>
 
           <input
             type="date"
@@ -1847,7 +1966,7 @@ function PortfolioTab({ session, currency }) {
             disabled={saving}
             style={{ padding: '10px', background: txType === 'buy' ? '#10b981' : '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '13px', opacity: saving ? 0.65 : 1 }}
           >
-            {saving ? 'Salvando...' : 'Salvar Operação'}
+            {saving ? 'Salvando...' : txType === 'buy' ? 'Registrar compra' : 'Registrar venda'}
           </button>
         </form>
 
