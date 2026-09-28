@@ -338,12 +338,13 @@ function MainDashboard({ session, theme, setTheme }) {
   );
 }
 
-// --- MODAL: GRÁFICO HISTÓRICO INDIVIDUAL (30 DIAS) ---
+// --- MODAL: GRÁFICO HISTÓRICO INDIVIDUAL ---
 function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClose }) {
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [highlightedDate, setHighlightedDate] = useState(null);
+  const [period, setPeriod] = useState('30');
 
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
   const vsCurrency = currency.toLowerCase();
@@ -351,7 +352,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
   useEffect(() => {
     if (!asset) return;
 
-    const cacheKey = `chart_30d_v2_${asset.coin_id}_${vsCurrency}`;
+    const cacheKey = `chart_${period}d_v3_${asset.coin_id}_${vsCurrency}`;
     const cached = localStorage.getItem(cacheKey);
     const now = Date.now();
 
@@ -373,7 +374,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
       setErrorMsg('');
       try {
         const res = await fetch(
-          `https://api.coingecko.com/api/v3/coins/${asset.coin_id}/market_chart?vs_currency=${vsCurrency}&days=30`
+          `https://api.coingecko.com/api/v3/coins/${asset.coin_id}/market_chart?vs_currency=${vsCurrency}&days=${period}`
         );
         if (res.status === 429) {
           throw new Error('Limite de requisições da CoinGecko excedido. Tente novamente em alguns instantes.');
@@ -407,7 +408,11 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
     };
 
     fetchChart();
-  }, [asset, vsCurrency]);
+  }, [asset, vsCurrency, period]);
+
+  useEffect(() => {
+    setHighlightedDate(null);
+  }, [period]);
 
   const chartDataWithMarkers = chartData.map((point) => {
     const matches = purchases.filter((p) => {
@@ -424,6 +429,18 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
 
     return { ...point, buyMarker: point.price, buyPaidPrice: weightedPaidPrice, buyCount: matches.length };
   });
+
+  const chartStats = (() => {
+    if (!chartData.length) return null;
+    const first = Number(chartData[0].price);
+    const last = Number(chartData[chartData.length - 1].price);
+    const high = Math.max(...chartData.map((p) => Number(p.price)));
+    const low = Math.min(...chartData.map((p) => Number(p.price)));
+    const change = first > 0 ? ((last - first) / first) * 100 : 0;
+    return { first, last, high, low, change };
+  })();
+
+  const formatChartPrice = (value) => `${currencySymbol} ${Number(value).toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload || payload.length === 0) return null;
@@ -457,9 +474,35 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
             <h3 style={{ margin: 0, fontSize: '17px', color: 'var(--text)' }}>
               📈 Desempenho de {asset.coin_name} <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>({asset.coin_symbol.toUpperCase()})</span>
             </h3>
-            <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: 'var(--text-faint)' }}>Cotação dos últimos 30 dias ({currency})</p>
+            <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: 'var(--text-faint)' }}>Histórico de cotação ({currency})</p>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '18px', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
+          {[
+            { value: '30', label: '30 dias' },
+            { value: '60', label: '60 dias' },
+            { value: '90', label: '90 dias' },
+            { value: '365', label: '1 ano' },
+          ].map((option) => (
+            <button
+              key={option.value}
+              onClick={() => setPeriod(option.value)}
+              style={{
+                padding: '6px 10px',
+                borderRadius: '7px',
+                border: period === option.value ? '1px solid #3b82f6' : '1px solid var(--border)',
+                background: period === option.value ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg)',
+                color: period === option.value ? '#60a5fa' : 'var(--text-muted)',
+                cursor: 'pointer',
+                fontSize: '11px',
+                fontWeight: 700,
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
 
         {loading ? (
@@ -468,6 +511,21 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
           <p style={{ textAlign: 'center', color: '#ef4444', padding: '40px 0', fontSize: '13px' }}>{errorMsg}</p>
         ) : (
           <div>
+            {chartStats && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '7px', marginBottom: '10px' }}>
+                {[
+                  { label: 'No período', value: `${chartStats.change >= 0 ? '+' : ''}${chartStats.change.toFixed(2)}%`, color: chartStats.change >= 0 ? '#10b981' : '#ef4444' },
+                  { label: 'Máxima', value: formatChartPrice(chartStats.high), color: 'var(--text)' },
+                  { label: 'Mínima', value: formatChartPrice(chartStats.low), color: 'var(--text)' },
+                  { label: 'Atual', value: formatChartPrice(chartStats.last), color: '#60a5fa' },
+                ].map((stat) => (
+                  <div key={stat.label} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '7px 8px', minWidth: 0 }}>
+                    <div style={{ fontSize: '9px', color: 'var(--text-faint)', textTransform: 'uppercase', fontWeight: '700' }}>{stat.label}</div>
+                    <div style={{ marginTop: '3px', fontSize: '11px', color: stat.color, fontWeight: '800', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stat.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{ width: '100%', height: '260px' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartDataWithMarkers} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -587,7 +645,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
                   return !chartData.some((c) => c.date === label);
                 }) && (
                     <p style={{ margin: '8px 0 0 0', fontSize: '10px', color: 'var(--text-faint)' }}>
-                      📅 Compras fora dos últimos 30 dias não aparecem marcadas no gráfico, só na lista acima.
+                      📅 Compras fora do período selecionado não aparecem marcadas no gráfico, só na lista acima.
                     </p>
                   )}
               </div>
@@ -1393,12 +1451,22 @@ function PortfolioTab({ session, currency }) {
   }, 0);
   const totalRealizedPnl = convertToDisplayCurrency(totalRealizedPnlUSD);
 
+  // P/L aberto = resultado das posições que ainda estão na carteira.
+  // O P/L realizado vem das vendas já encerradas.
+  const totalUnrealizedPnl = totalPnl;
+  const totalResultPnl = totalUnrealizedPnl + totalRealizedPnl;
+  const totalResultPct = totalInvested > 0 ? (totalResultPnl / totalInvested) * 100 : 0;
+
   const assetsWithPnlPct = portfolio.map((c) => {
     const itemTotalPaid = getItemTotalPaid(c, currency);
     const buyPriceDisplay = c.amount > 0 ? itemTotalPaid / c.amount : 0;
     const currentPrice = prices[c.coin_id]?.[currKey] || buyPriceDisplay;
     const pnlPct = buyPriceDisplay > 0 ? ((currentPrice - buyPriceDisplay) / buyPriceDisplay) * 100 : 0;
-    return { ...c, pnlPct };
+    const realizedPnlUSD = (c.history || []).reduce((sum, tx) => sum + (tx.realized_pnl_usd || 0), 0);
+    const realizedPnl = convertToDisplayCurrency(realizedPnlUSD);
+    const unrealizedPnl = (currentPrice * c.amount) - itemTotalPaid;
+    const currentValueAsset = currentPrice * c.amount;
+    return { ...c, pnlPct, realizedPnl, unrealizedPnl, currentValueAsset, itemTotalPaid };
   }).filter((c) => c.amount > 0);
 
   const bestAsset = assetsWithPnlPct.length > 0
@@ -1470,6 +1538,65 @@ function PortfolioTab({ session, currency }) {
 
   const transactionDates = [...new Set(allTransactions.map(t => t.date))]
     .sort((a, b) => new Date(b) - new Date(a));
+
+  // Resumo mensal das operações: compras, vendas e P/L realizado.
+  const monthlyOperations = (() => {
+    const groups = {};
+    allTransactions.forEach((tx) => {
+      const monthKey = String(tx.date || '').slice(0, 7);
+      if (!monthKey) return;
+      if (!groups[monthKey]) groups[monthKey] = { monthKey, buys: 0, sells: 0, buyCount: 0, sellCount: 0, realizedPnlUSD: 0 };
+      const amountDisplay = convertCurrency(Math.abs(Number(tx.total) || 0), tx.currency, currency);
+      if (tx.type === 'buy') {
+        groups[monthKey].buys += amountDisplay;
+        groups[monthKey].buyCount += 1;
+      } else {
+        groups[monthKey].sells += amountDisplay;
+        groups[monthKey].sellCount += 1;
+        groups[monthKey].realizedPnlUSD += Number(tx.realized_pnl_usd) || 0;
+      }
+    });
+    return Object.values(groups)
+      .sort((a, b) => b.monthKey.localeCompare(a.monthKey))
+      .slice(0, 6)
+      .map((m) => ({
+        ...m,
+        realizedPnl: convertToDisplayCurrency(m.realizedPnlUSD),
+        label: new Date(`${m.monthKey}-15T00:00:00`).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', ''),
+      }));
+  })();
+
+  // Fechamento mensal usando os snapshots diários já armazenados.
+  const monthlySnapshots = (() => {
+    const groups = {};
+    snapshotHistory.forEach((snap) => {
+      const key = String(snap.snapshot_date || '').slice(0, 7);
+      if (!key) return;
+      if (!groups[key] || new Date(snap.snapshot_date) > new Date(groups[key].snapshot_date)) groups[key] = snap;
+    });
+    const ordered = Object.values(groups).sort((a, b) => new Date(a.snapshot_date) - new Date(b.snapshot_date));
+    return ordered.map((snap, index) => {
+      const previous = ordered[index - 1];
+      const value = convertToDisplayCurrency(Number(snap.total_value_usd) || 0);
+      const invested = convertToDisplayCurrency(Number(snap.total_invested_usd) || 0);
+      const valueDelta = previous ? value - convertToDisplayCurrency(Number(previous.total_value_usd) || 0) : 0;
+      const investedDelta = previous ? invested - convertToDisplayCurrency(Number(previous.total_invested_usd) || 0) : 0;
+      const marketPnl = valueDelta - investedDelta;
+      return {
+        key: snap.snapshot_date,
+        label: new Date(`${snap.snapshot_date}T00:00:00`).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', ''),
+        value,
+        invested,
+        marketPnl,
+      };
+    }).reverse().slice(0, 6);
+  })();
+
+  const topAssetAllocation = assetsWithPnlPct.length > 0
+    ? assetsWithPnlPct
+      .map((asset) => ({ ...asset, allocationPct: currentValue > 0 ? (asset.currentValueAsset / currentValue) * 100 : 0 }))
+      .sort((a, b) => b.allocationPct - a.allocationPct)[0]
+    : null;
 
   const buyCount = allTransactions.filter((tx) => tx.type === 'buy').length;
   const sellCount = allTransactions.filter((tx) => tx.type === 'sell').length;
@@ -1587,6 +1714,46 @@ function PortfolioTab({ session, currency }) {
 
       </div>
 
+      {/* Resultado realizado x aberto */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '13px 14px', borderRadius: '14px' }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase' }}>P/L em aberto</span>
+          <strong style={{ display: 'block', marginTop: '4px', color: totalUnrealizedPnl >= 0 ? '#10b981' : '#ef4444', fontSize: '16px' }}>
+            {showValues ? formatMoney(totalUnrealizedPnl) : '••••••••'}
+          </strong>
+          <span style={{ color: 'var(--text-faint)', fontSize: '9px' }}>Posições que ainda estão na carteira</span>
+        </div>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '13px 14px', borderRadius: '14px' }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase' }}>P/L realizado</span>
+          <strong style={{ display: 'block', marginTop: '4px', color: totalRealizedPnl >= 0 ? '#10b981' : '#ef4444', fontSize: '16px' }}>
+            {showValues ? formatMoney(totalRealizedPnl) : '••••••••'}
+          </strong>
+          <span style={{ color: 'var(--text-faint)', fontSize: '9px' }}>Vendas já encerradas</span>
+        </div>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '13px 14px', borderRadius: '14px' }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase' }}>Resultado total</span>
+          <strong style={{ display: 'block', marginTop: '4px', color: totalResultPnl >= 0 ? '#10b981' : '#ef4444', fontSize: '16px' }}>
+            {showValues ? formatMoney(totalResultPnl) : '••••••••'}
+          </strong>
+          <span style={{ color: 'var(--text-faint)', fontSize: '9px' }}>Aberto + realizado · {showValues ? `${totalResultPct >= 0 ? '+' : ''}${totalResultPct.toFixed(2)}%` : '•••'}</span>
+        </div>
+      </div>
+
+      {/* Concentração da carteira */}
+      {topAssetAllocation && (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '12px 14px', borderRadius: '14px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase' }}>Concentração da carteira</span>
+            <div style={{ marginTop: '3px', color: 'var(--text)', fontSize: '12px', fontWeight: '700' }}>
+              {topAssetAllocation.coin_name} ({topAssetAllocation.coin_symbol.toUpperCase()}) representa {topAssetAllocation.allocationPct.toFixed(1)}% do patrimônio
+            </div>
+          </div>
+          <span style={{ padding: '5px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: topAssetAllocation.allocationPct >= 50 ? 'rgba(245,158,11,.08)' : 'var(--bg)', color: topAssetAllocation.allocationPct >= 50 ? '#f59e0b' : 'var(--text-muted)', fontSize: '10px', fontWeight: '700' }}>
+            {topAssetAllocation.allocationPct >= 50 ? '⚠️ Alta concentração' : 'Diversificação atual'}
+          </span>
+        </div>
+      )}
+
       {/* Seletor de Período para P/L */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ color: 'var(--text-muted)', fontSize: '12px', fontWeight: '600' }}>
@@ -1644,6 +1811,48 @@ function PortfolioTab({ session, currency }) {
           </div>
         </div>
       </div>
+
+      {/* Resumo mensal */}
+      {(monthlyOperations.length > 0 || monthlySnapshots.length > 0) && (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
+          <div style={{ marginBottom: '12px' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontWeight: '700' }}>📅 Resumo mensal</span>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-faint)', fontSize: '10px' }}>Compras, vendas e evolução da carteira nos meses mais recentes.</p>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', minWidth: '650px', borderCollapse: 'collapse', fontSize: '11px' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '9px' }}>
+                  <th style={{ padding: '7px 6px', textAlign: 'left' }}>Mês</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>Compras</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>Vendas</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>P/L realizado</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>Patrimônio</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right' }}>P/L mercado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from(new Set([...(monthlyOperations.map(x => x.monthKey)), ...(monthlySnapshots.map(x => x.key.slice(0,7)))])).sort((a,b)=>b.localeCompare(a)).slice(0,6).map((monthKey) => {
+                  const op = monthlyOperations.find(x => x.monthKey === monthKey);
+                  const snap = monthlySnapshots.find(x => x.key.slice(0,7) === monthKey);
+                  return (
+                    <tr key={monthKey} style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+                      <td style={{ padding: '8px 6px', fontWeight: '700', color: 'var(--text)' }}>
+                        {new Date(`${monthKey}-15T00:00:00`).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '')}
+                      </td>
+                      <td style={{ padding: '8px 6px', textAlign: 'right' }}>{op ? formatMoney(op.buys) : '—'}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'right' }}>{op ? formatMoney(op.sells) : '—'}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'right', color: op?.realizedPnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>{op ? formatMoney(op.realizedPnl) : '—'}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: '700', color: 'var(--text)' }}>{snap ? formatMoney(snap.value) : '—'}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'right', color: snap?.marketPnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }}>{snap ? formatMoney(snap.marketPnl) : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Gráficos Consolidados */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
@@ -2332,11 +2541,11 @@ function PortfolioTab({ session, currency }) {
                   <th style={{ padding: '8px' }}>Carteira</th>
                   <th style={{ padding: '8px' }}>1ª Compra</th>
                   <th style={{ padding: '8px' }}>Qtd</th>
-                  <th style={{ padding: '8px' }}>Preço na Compra</th>
+                  <th style={{ padding: '8px' }}>Preço Médio</th>
                   <th style={{ padding: '8px' }}>Preço Hoje</th>
                   <th style={{ padding: '8px' }}>Total Pago</th>
                   <th style={{ padding: '8px' }}>Valor Hoje</th>
-                  <th style={{ padding: '8px' }}>Profit / Loss</th>
+                  <th style={{ padding: '8px' }}>P/L em Aberto</th>
                   <th style={{ padding: '8px', textAlign: 'right' }}>Ação</th>
                 </tr>
               </thead>
@@ -2414,6 +2623,15 @@ function PortfolioTab({ session, currency }) {
                             <span style={{ fontSize: '10px', display: 'block', fontWeight: '600' }}>
                               ({itemPnlPct >= 0 ? '+' : ''}{itemPnlPct.toFixed(2)}%)
                             </span>
+                            {(() => {
+                              const realizedAsset = (item.history || []).reduce((sum, tx) => sum + (tx.realized_pnl_usd || 0), 0);
+                              const realizedDisplay = convertToDisplayCurrency(realizedAsset);
+                              return realizedAsset !== 0 ? (
+                                <span style={{ fontSize: '9px', display: 'block', marginTop: '3px', color: realizedDisplay >= 0 ? '#10b981' : '#ef4444', fontWeight: '600' }}>
+                                  Realizado: {currencySymbol} {realizedDisplay.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              ) : null;
+                            })()}
                           </>
                         ) : (
                           '••••••••'
@@ -2446,6 +2664,8 @@ function MarketTab({ session, currency }) {
   const [loading, setLoading] = useState(true);
   const [favorites, setFavorites] = useState([]);
   const [filterQuery, setFilterQuery] = useState('');
+  const [marketSort, setMarketSort] = useState('rank');
+  const [selectedMarketCoin, setSelectedMarketCoin] = useState(null);
 
   const currencySymbol = currency === 'BRL' ? 'R$' : '$';
   const vsCurrency = currency.toLowerCase();
@@ -2517,6 +2737,12 @@ function MarketTab({ session, currency }) {
     const bFav = favorites.includes(b.id);
     if (aFav && !bFav) return -1;
     if (!aFav && bFav) return 1;
+
+    if (marketSort === '24h') return (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0);
+    if (marketSort === '7d') return (b.price_change_percentage_7d_in_currency || 0) - (a.price_change_percentage_7d_in_currency || 0);
+    if (marketSort === '30d') return (b.price_change_percentage_30d_in_currency || 0) - (a.price_change_percentage_30d_in_currency || 0);
+    if (marketSort === 'volume') return (b.total_volume || 0) - (a.total_volume || 0);
+    if (marketSort === 'price') return (b.current_price || 0) - (a.current_price || 0);
     return a.market_cap_rank - b.market_cap_rank;
   });
 
@@ -2600,13 +2826,28 @@ function MarketTab({ session, currency }) {
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', width: '100%', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
           <h3 style={{ margin: 0, fontSize: '15px', color: 'var(--text)' }}>🌐 Mercado Crypto (Top 30)</h3>
-          <input
-            type="text"
-            placeholder="Filtrar por nome/símbolo..."
-            value={filterQuery}
-            onChange={(e) => setFilterQuery(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12px', minWidth: '180px' }}
-          />
+          <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              placeholder="Filtrar por nome/símbolo..."
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12px', minWidth: '180px' }}
+            />
+            <select
+              value={marketSort}
+              onChange={(e) => setMarketSort(e.target.value)}
+              title="Ordenar mercado"
+              style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '12px', cursor: 'pointer' }}
+            >
+              <option value="rank">Ordenar: Market Cap</option>
+              <option value="24h">Maior alta 24h</option>
+              <option value="7d">Maior alta 7d</option>
+              <option value="30d">Maior alta 30d</option>
+              <option value="volume">Maior volume</option>
+              <option value="price">Maior preço</option>
+            </select>
+          </div>
         </div>
 
         {loading ? (
@@ -2622,6 +2863,7 @@ function MarketTab({ session, currency }) {
                   <th style={{ padding: '8px' }}>Preço</th>
                   <th style={{ padding: '8px' }}>24h %</th>
                   <th style={{ padding: '8px' }}>7d %</th>
+                  <th style={{ padding: '8px' }}>30d %</th>
                   <th style={{ padding: '8px' }}>Cap. de Mercado</th>
                 </tr>
               </thead>
@@ -2630,12 +2872,18 @@ function MarketTab({ session, currency }) {
                   const isFav = favorites.includes(coin.id);
                   const p24 = coin.price_change_percentage_24h || 0;
                   const p7d = coin.price_change_percentage_7d_in_currency || 0;
+                  const p30d = coin.price_change_percentage_30d_in_currency || 0;
 
                   return (
-                    <tr key={coin.id} style={{ borderBottom: '1px solid var(--border)', color: 'var(--text)', fontSize: '12px' }}>
+                    <tr
+                      key={coin.id}
+                      onClick={() => setSelectedMarketCoin(coin)}
+                      title={`Ver histórico de ${coin.name}`}
+                      style={{ borderBottom: '1px solid var(--border)', color: 'var(--text)', fontSize: '12px', cursor: 'pointer' }}
+                    >
                       <td style={{ padding: '10px 4px', textAlign: 'center' }}>
                         <button
-                          onClick={() => toggleFavorite(coin.id)}
+                          onClick={(e) => { e.stopPropagation(); toggleFavorite(coin.id); }}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}
                         >
                           {isFav ? '⭐' : '☆'}
@@ -2658,6 +2906,9 @@ function MarketTab({ session, currency }) {
                       <td style={{ padding: '10px 8px', fontWeight: '700', color: p7d >= 0 ? '#10b981' : '#ef4444' }}>
                         {p7d >= 0 ? '+' : ''}{p7d.toFixed(2)}%
                       </td>
+                      <td style={{ padding: '10px 8px', fontWeight: '700', color: p30d >= 0 ? '#10b981' : '#ef4444' }}>
+                        {p30d >= 0 ? '+' : ''}{p30d.toFixed(2)}%
+                      </td>
                       <td style={{ padding: '10px 8px', color: 'var(--text-secondary)' }}>
                         {currencySymbol} {coin.market_cap?.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US')}
                       </td>
@@ -2669,6 +2920,20 @@ function MarketTab({ session, currency }) {
           </div>
         )}
       </div>
+
+      {selectedMarketCoin && (
+        <AssetChartModal
+          asset={{
+            coin_id: selectedMarketCoin.id,
+            coin_name: selectedMarketCoin.name,
+            coin_symbol: selectedMarketCoin.symbol,
+          }}
+          currency={currency}
+          buyUnitPrice={0}
+          purchases={[]}
+          onClose={() => setSelectedMarketCoin(null)}
+        />
+      )}
 
     </div>
   );
