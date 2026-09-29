@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
 import { RiskMetricsCard } from './components/RiskMetricsCard';
 
+const CG = '/api/cg';
 const GLOBAL_STYLES = `
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; min-height: 100%; }
@@ -374,7 +375,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
       setErrorMsg('');
       try {
         const res = await fetch(
-          `https://api.coingecko.com/api/v3/coins/${asset.coin_id}/market_chart?vs_currency=${vsCurrency}&days=${period}`
+          `${CG}`
         );
         if (res.status === 429) {
           throw new Error('Limite de requisições da CoinGecko excedido. Tente novamente em alguns instantes.');
@@ -761,7 +762,7 @@ function PortfolioTab({ session, currency }) {
       setFetchingLivePrice(true);
       try {
         const res = await fetch(
-          `https://api.coingecko.com/api/v3/simple/price?ids=${selectedCoin.id}&vs_currencies=${currKeyLocal}`
+          `${CG}`
         );
         const data = await res.json();
         const p = data?.[selectedCoin.id]?.[currKeyLocal];
@@ -917,7 +918,7 @@ function PortfolioTab({ session, currency }) {
 
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`https://api.coingecko.com/api/v3/search?query=${searchQuery}`);
+        const res = await fetch(`${CG}`);
         const data = await res.json();
         setSearchResults(data.coins?.slice(0, 5) || []);
       } catch (err) {
@@ -1026,7 +1027,7 @@ function PortfolioTab({ session, currency }) {
         // ao endpoint /coins/markets). Isso corta pela metade o consumo da cota
         // gratuita da CoinGecko nessa atualização recorrente de preços.
         const priceRes = await fetch(
-          `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,brl`
+          `${CG}`
         );
         const priceData = await priceRes.json();
 
@@ -1058,7 +1059,7 @@ function PortfolioTab({ session, currency }) {
         if (missingIconIds.length > 0) {
           try {
             const iconRes = await fetch(
-              `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${missingIconIds.join(',')}`
+              `${CG}`
             );
             const iconData = await iconRes.json();
             if (Array.isArray(iconData) && !cancelled) {
@@ -1150,7 +1151,7 @@ function PortfolioTab({ session, currency }) {
         if (cancelled) return;
         try {
           const res = await fetch(
-            `https://api.coingecko.com/api/v3/coins/${id}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false`
+            `${CG}`
           );
           const data = await res.json();
           const category = (data.categories || []).find((c) => c && c.trim().length > 0) || 'Outros';
@@ -1884,7 +1885,7 @@ function PortfolioTab({ session, currency }) {
           )}
         </div>
 
-              </div>
+      </div>
 
       {/* Atividade da carteira */}
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '14px 16px', borderRadius: '16px', marginBottom: '16px', width: '100%', boxSizing: 'border-box' }}>
@@ -1935,9 +1936,9 @@ function PortfolioTab({ session, currency }) {
                 </tr>
               </thead>
               <tbody>
-                {Array.from(new Set([...(monthlyOperations.map(x => x.monthKey)), ...(monthlySnapshots.map(x => x.key.slice(0,7)))])).sort((a,b)=>b.localeCompare(a)).map((monthKey) => {
+                {Array.from(new Set([...(monthlyOperations.map(x => x.monthKey)), ...(monthlySnapshots.map(x => x.key.slice(0, 7)))])).sort((a, b) => b.localeCompare(a)).map((monthKey) => {
                   const op = monthlyOperations.find(x => x.monthKey === monthKey);
-                  const snap = monthlySnapshots.find(x => x.key.slice(0,7) === monthKey);
+                  const snap = monthlySnapshots.find(x => x.key.slice(0, 7) === monthKey);
                   return (
                     <tr key={monthKey} style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
                       <td style={{ padding: '8px 6px', fontWeight: '700', color: 'var(--text)' }}>
@@ -1958,7 +1959,7 @@ function PortfolioTab({ session, currency }) {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
-<div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', boxSizing: 'border-box' }}>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', boxSizing: 'border-box' }}>
           <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontWeight: '500', display: 'block', marginBottom: '8px' }}>
             Alocação de Ativos ({currency})
           </span>
@@ -2696,10 +2697,10 @@ function MarketTab({ session, currency }) {
       setLoading(true);
       try {
         const res = await fetch(
-          `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${vsCurrency}&order=market_cap_desc&per_page=30&page=1&sparkline=false&price_change_percentage=7d,30d`
+          `${CG}`
         );
         const data = await res.json();
-        setMarketCoins(data || []);
+        setMarketCoins(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error(err);
       } finally {
