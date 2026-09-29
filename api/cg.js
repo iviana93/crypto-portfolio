@@ -1,11 +1,15 @@
 const ALLOWED = ['/simple/price', '/coins/', '/search'];
 
 export default async function handler(req, res) {
-  const upstreamPath = req.url.replace(/^\/api\/cg/, '');
+  const { p = '', ...query } = req.query;
+  const path = '/' + (Array.isArray(p) ? p.join('/') : p);
 
-  if (!ALLOWED.some((p) => upstreamPath.startsWith(p))) {
+  if (!ALLOWED.some((a) => path.startsWith(a))) {
     return res.status(400).json({ error: 'Path not allowed' });
   }
+
+  const qs = new URLSearchParams(query).toString();
+  const url = `https://api.coingecko.com/api/v3${path}${qs ? '?' + qs : ''}`;
 
   const headers = { accept: 'application/json' };
   if (process.env.COINGECKO_API_KEY) {
@@ -13,7 +17,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const r = await fetch(`https://api.coingecko.com/api/v3${upstreamPath}`, { headers });
+    const r = await fetch(url, { headers });
     const body = await r.text();
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
