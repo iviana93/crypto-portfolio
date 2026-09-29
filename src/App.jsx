@@ -375,7 +375,7 @@ function AssetChartModal({ asset, currency, buyUnitPrice, purchases = [], onClos
       setErrorMsg('');
       try {
         const res = await fetch(
-          `${CG}`
+          `${CG}/coins/${asset.coin_id}/market_chart?vs_currency=${vsCurrency}&days=${period}`
         );
         if (res.status === 429) {
           throw new Error('Limite de requisições da CoinGecko excedido. Tente novamente em alguns instantes.');
@@ -762,7 +762,7 @@ function PortfolioTab({ session, currency }) {
       setFetchingLivePrice(true);
       try {
         const res = await fetch(
-          `${CG}`
+          `${CG}/simple/price?ids=${selectedCoin.id}&vs_currencies=${currKeyLocal}`
         );
         const data = await res.json();
         const p = data?.[selectedCoin.id]?.[currKeyLocal];
@@ -918,7 +918,7 @@ function PortfolioTab({ session, currency }) {
 
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`${CG}`);
+        const res = await fetch(`${CG}/search?query=${encodeURIComponent(searchQuery)}`);
         const data = await res.json();
         setSearchResults(data.coins?.slice(0, 5) || []);
       } catch (err) {
@@ -1027,7 +1027,7 @@ function PortfolioTab({ session, currency }) {
         // ao endpoint /coins/markets). Isso corta pela metade o consumo da cota
         // gratuita da CoinGecko nessa atualização recorrente de preços.
         const priceRes = await fetch(
-          `${CG}`
+          `${CG}/simple/price?ids=${ids}&vs_currencies=usd,brl`
         );
         const priceData = await priceRes.json();
 
@@ -1059,7 +1059,7 @@ function PortfolioTab({ session, currency }) {
         if (missingIconIds.length > 0) {
           try {
             const iconRes = await fetch(
-              `${CG}`
+              `${CG}/coins/markets?vs_currency=usd&ids=${missingIconIds.join(',')}`
             );
             const iconData = await iconRes.json();
             if (Array.isArray(iconData) && !cancelled) {
@@ -1151,7 +1151,7 @@ function PortfolioTab({ session, currency }) {
         if (cancelled) return;
         try {
           const res = await fetch(
-            `${CG}`
+            `${CG}/coins/${id}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false`
           );
           const data = await res.json();
           const category = (data.categories || []).find((c) => c && c.trim().length > 0) || 'Outros';
@@ -2697,7 +2697,7 @@ function MarketTab({ session, currency }) {
       setLoading(true);
       try {
         const res = await fetch(
-          `${CG}`
+          `${CG}/coins/markets?vs_currency=${vsCurrency}&order=market_cap_desc&per_page=30&page=1&sparkline=false&price_change_percentage=7d,30d`
         );
         const data = await res.json();
         setMarketCoins(Array.isArray(data) ? data : []);
